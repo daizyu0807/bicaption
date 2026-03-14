@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, screen } from 'electron';
+import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SidecarBridge } from './sidecar.js';
@@ -9,6 +10,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const rendererEntry = process.env.VITE_DEV_SERVER_URL ?? `file://${join(__dirname, '../renderer/index.html')}`;
 const preloadPath = join(__dirname, 'preload.js');
+const projectRoot = join(__dirname, '../..');
+const sidecarScript = join(projectRoot, 'python', 'sidecar.py');
 
 let settingsWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
@@ -96,10 +99,17 @@ app.whenReady().then(() => {
     return { ok: true };
   });
   ipcMain.handle('session:devices', () => {
-    return [
-      { id: 'blackhole', label: 'BlackHole 2ch' },
-      { id: 'default', label: 'System Default' },
-    ];
+    try {
+      const output = execFileSync('python3', [sidecarScript, '--list-devices'], {
+        cwd: projectRoot,
+        encoding: 'utf-8',
+      });
+      return JSON.parse(output) as Array<{ id: string; label: string }>;
+    } catch {
+      return [
+        { id: 'blackhole', label: 'BlackHole 2ch' },
+      ];
+    }
   });
   ipcMain.handle('app:show-settings', () => {
     settingsWindow?.show();

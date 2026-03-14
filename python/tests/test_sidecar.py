@@ -4,17 +4,23 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sidecar import SimpleLocalTranslateProvider
+from sidecar import FallbackTranslator, make_segment_id, normalize_text
 
 
 class TranslationProviderTest(unittest.TestCase):
     def test_translates_known_phrase(self) -> None:
-        provider = SimpleLocalTranslateProvider()
+        provider = FallbackTranslator()
         self.assertEqual(provider.translate("hello", "en", "zh-TW"), "你好")
 
     def test_preserves_unknown_text(self) -> None:
-        provider = SimpleLocalTranslateProvider()
+        provider = FallbackTranslator()
         self.assertIn("Roadmap", provider.translate("Roadmap review", "en", "zh-TW"))
+
+    def test_normalizes_whitespace(self) -> None:
+        self.assertEqual(normalize_text("  hello   world "), "hello world")
+
+    def test_segment_id_is_stable(self) -> None:
+        self.assertEqual(make_segment_id(1049, 2899), "seg-10-29")
 
 
 if __name__ == "__main__":
