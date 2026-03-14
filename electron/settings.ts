@@ -5,12 +5,22 @@ export const defaultSettings: AppSettings = {
   deviceId: 'blackhole',
   sourceLang: 'en',
   targetLang: 'zh-TW',
-  sttModel: 'small',
-  translateModel: 'marian-en-zh',
-  chunkMs: 1800,
+  sttModel: 'tiny',
+  translateModel: 'disabled',
+  chunkMs: 900,
+  beamSize: 1,
+  bestOf: 1,
+  vadFilter: false,
+  conditionOnPrev: false,
+  saveEnabled: false,
+  saveDirectory: '',
   overlayOpacity: 0.9,
   overlayFontScale: 1,
   overlayPosition: 'bottom',
+  overlayX: 0,
+  overlayY: 0,
+  overlayWidth: 900,
+  overlayHeight: 220,
 };
 
 const store = new Store<AppSettings>({
@@ -19,10 +29,11 @@ const store = new Store<AppSettings>({
 });
 
 export function loadSettings(): AppSettings {
-  return {
+  const current = {
     ...defaultSettings,
     ...store.store,
   };
+  return current;
 }
 
 export function saveSettings(partial: Partial<AppSettings>): AppSettings {

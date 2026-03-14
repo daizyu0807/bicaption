@@ -7,6 +7,10 @@ export interface CaptionConfig {
   sttModel: string;
   translateModel: string;
   chunkMs: number;
+  beamSize: number;
+  bestOf: number;
+  vadFilter: boolean;
+  conditionOnPrev: boolean;
 }
 
 export interface PartialCaptionEvent {
@@ -71,7 +75,24 @@ export interface AppSettings {
   sttModel: string;
   translateModel: string;
   chunkMs: number;
+  beamSize: number;
+  bestOf: number;
+  vadFilter: boolean;
+  conditionOnPrev: boolean;
+  saveEnabled: boolean;
+  saveDirectory: string;
   overlayOpacity: number;
   overlayFontScale: number;
   overlayPosition: 'top' | 'bottom';
+  overlayX: number;
+  overlayY: number;
+  overlayWidth: number;
+  overlayHeight: number;
+}
+
+export interface OverlayBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }

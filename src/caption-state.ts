@@ -73,7 +73,7 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
       return {
         ...state,
         lastError: event.message,
-        sessionState: 'error',
+        sessionState: event.recoverable ? state.sessionState : 'error',
       };
   }
 }

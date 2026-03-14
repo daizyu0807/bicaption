@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sidecar import FallbackTranslator, make_segment_id, normalize_text
+from sidecar import FallbackTranslator, looks_like_garbage_text, make_segment_id, normalize_text
 
 
 class TranslationProviderTest(unittest.TestCase):
@@ -21,6 +21,12 @@ class TranslationProviderTest(unittest.TestCase):
 
     def test_segment_id_is_stable(self) -> None:
         self.assertEqual(make_segment_id(1049, 2899), "seg-10-29")
+
+    def test_filters_repeated_garbage_text(self) -> None:
+        self.assertTrue(looks_like_garbage_text("M-M-M-M-M-M-M-M-"))
+
+    def test_allows_normal_sentence(self) -> None:
+        self.assertFalse(looks_like_garbage_text("People dream high in the quiet of the night"))
 
 
 if __name__ == "__main__":

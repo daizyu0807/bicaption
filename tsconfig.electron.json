@@ -12,5 +12,5 @@
     "types": ["node"],
     "sourceMap": true
   },
-  "include": ["electron/**/*.ts"]
+  "include": ["electron/main.ts", "electron/settings.ts", "electron/sidecar.ts", "electron/types.ts"]
 }

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,18 @@ import type { CaptionConfig, SidecarEvent } from './types.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '../..');
 const sidecarPath = join(projectRoot, 'python', 'sidecar.py');
+const venvPython = join(projectRoot, '.venv', 'bin', 'python');
+const pythonBin = existsSync(venvPython) ? venvPython : 'python3';
+const ignoredStderrPatterns = [
+  'Disabling PyTorch because PyTorch >= 2.4 is required but found 2.2.2',
+  'PyTorch was not found. Models won\'t be available',
+];
+const ignoredStdoutPatterns = [
+  'Intel MKL',
+  'OMP:',
+  'OpenMP',
+  'MKL_VERBOSE',
+];
 
 interface SidecarCommand {
   command: 'start_session' | 'stop_session' | 'ping';
@@ -22,11 +35,14 @@ export class SidecarBridge extends EventEmitter {
       return;
     }
 
-    const child = spawn('python3', [sidecarPath], {
+    const child = spawn(pythonBin, [sidecarPath], {
       cwd: projectRoot,
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1',
+        USE_TORCH: '0',
+        KMP_WARNINGS: '0',
+        MKL_VERBOSE: '0',
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -34,18 +50,31 @@ export class SidecarBridge extends EventEmitter {
 
     const lineReader = createInterface({ input: child.stdout });
     lineReader.on('line', (line) => {
-      if (!line.trim()) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return;
+      }
+      if (ignoredStdoutPatterns.some((pattern) => trimmed.includes(pattern))) {
+        return;
+      }
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        this.emit('error', {
+          type: 'error',
+          code: 'sidecar_stdout',
+          message: trimmed,
+          recoverable: true,
+        } satisfies SidecarEvent);
         return;
       }
       try {
-        const event = JSON.parse(line) as SidecarEvent;
+        const event = JSON.parse(trimmed) as SidecarEvent;
         this.emit(event.type, event);
         this.emit('event', event);
       } catch (error) {
         this.emit('error', {
           type: 'error',
           code: 'sidecar_parse_error',
-          message: error instanceof Error ? error.message : 'Unknown sidecar parse error',
+          message: `${error instanceof Error ? error.message : 'Unknown sidecar parse error'}: ${trimmed.slice(0, 160)}`,
           recoverable: true,
         } satisfies SidecarEvent);
       }
@@ -53,6 +82,12 @@ export class SidecarBridge extends EventEmitter {
 
     const errorReader = createInterface({ input: child.stderr });
     errorReader.on('line', (line) => {
+      if (!line.trim()) {
+        return;
+      }
+      if (ignoredStderrPatterns.some((pattern) => line.includes(pattern))) {
+        return;
+      }
       this.emit('error', {
         type: 'error',
         code: 'sidecar_stderr',
