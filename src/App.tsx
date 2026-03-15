@@ -47,7 +47,7 @@ function OverlayView({
             <span aria-hidden="true">{isCollapsed ? '+' : '−'}</span>
           </button>
         </div>
-        <span className="overlay-title">{translationEnabled ? 'Realtime Bilingual Captions' : 'Realtime Captions'}</span>
+        <span className="overlay-title">BiCaption</span>
       </header>
       {!isCollapsed && (
         <section className="overlay-body" ref={stackRef}>

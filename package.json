@@ -1,12 +1,12 @@
 {
-  "name": "realtime-bilingual-subtitles",
+  "name": "bicaption",
   "version": "0.1.0",
-  "description": "Realtime bilingual subtitle overlay for macOS — local STT with SenseVoice + Google Translate",
+  "description": "Realtime bilingual caption overlay for macOS — local STT with SenseVoice + Google Translate",
   "license": "MIT",
   "author": "davedai",
   "repository": {
     "type": "git",
-    "url": "https://github.com/davedai/realtime-bilingual-subtitles"
+    "url": "https://github.com/davedai/bicaption"
   },
   "type": "module",
   "engines": {

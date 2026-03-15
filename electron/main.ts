@@ -87,7 +87,7 @@ function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 360,
     height: 610,
-    title: 'Realtime Bilingual Subtitles',
+    title: 'BiCaption',
     webPreferences: {
       preload: preloadPath,
     },

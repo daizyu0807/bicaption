@@ -1,4 +1,6 @@
-# Realtime Bilingual Subtitles
+# BiCaption
+
+Realtime bilingual caption overlay for macOS.
 
 [English](#english) | [繁體中文](#繁體中文)
 
@@ -6,7 +8,7 @@
 
 ## English
 
-Realtime bilingual subtitle overlay for macOS. Captures system audio (via BlackHole) or microphone input, transcribes with [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) (sherpa-onnx), and shows bilingual captions in a transparent always-on-top overlay.
+Captures system audio (via BlackHole) or microphone input, transcribes with [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) (sherpa-onnx), and shows bilingual captions in a transparent always-on-top overlay.
 
 ### Features
 
