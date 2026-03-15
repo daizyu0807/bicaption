@@ -1,7 +1,13 @@
 {
   "name": "realtime-bilingual-subtitles",
   "version": "0.1.0",
-  "private": true,
+  "description": "Realtime bilingual subtitle overlay for macOS — local STT with SenseVoice + Google Translate",
+  "license": "MIT",
+  "author": "davedai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/davedai/realtime-bilingual-subtitles"
+  },
   "type": "module",
   "main": "dist/electron/main.js",
   "scripts": {

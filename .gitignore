@@ -4,3 +4,15 @@ dist/
 __pycache__/
 *.onnx
 python/sherpa-onnx-sense-voice-*/
+.env
+.env.*
+.DS_Store
+*.log
+.idea/
+.vscode/
+*.swp
+*.swo
+docs/
+task-plan.md
+findings.md
+progress.md

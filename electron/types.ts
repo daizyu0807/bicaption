@@ -2,6 +2,7 @@ export type SessionState = 'idle' | 'connecting' | 'streaming' | 'error' | 'stop
 
 export interface CaptionConfig {
   deviceId: string;
+  outputDeviceId: string;
   sourceLang: string;
   targetLang: string;
   sttModel: string;
@@ -70,6 +71,7 @@ export interface CaptionRecord {
 
 export interface AppSettings {
   deviceId: string;
+  outputDeviceId: string;
   sourceLang: string;
   targetLang: string;
   sttModel: string;
@@ -95,4 +97,17 @@ export interface OverlayBounds {
   y: number;
   width: number;
   height: number;
+}
+
+export interface ModelStatus {
+  sensevoice: boolean;
+  vad: boolean;
+  ready: boolean;
+}
+
+export interface ModelDownloadProgress {
+  stage: 'sensevoice' | 'vad' | 'extracting';
+  percent: number;
+  downloadedMB: number;
+  totalMB: number;
 }

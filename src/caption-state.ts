@@ -52,7 +52,7 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
             endedAtMs: event.endedAtMs,
             isFinal: true,
           },
-        ].slice(-3),
+        ],
       };
     case 'metrics':
       return {

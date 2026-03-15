@@ -90,11 +90,14 @@ def list_audio_devices() -> list[dict[str, Any]]:
 def resolve_device(device_id: str, require_input: bool = True) -> int | None:
     devices = sd.query_devices()
     channel_key = "max_input_channels" if require_input else "max_output_channels"
+
+    # Try exact numeric index first
     if device_id.isdigit():
         index = int(device_id)
         if 0 <= index < len(devices) and int(devices[index].get(channel_key, 0)) > 0:
             return index
 
+    # Try name substring match
     lowered = device_id.lower()
     for index, device in enumerate(devices):
         if int(device.get(channel_key, 0)) <= 0:
@@ -102,6 +105,18 @@ def resolve_device(device_id: str, require_input: bool = True) -> int | None:
         name = str(device.get("name", "")).lower()
         if lowered in name:
             return index
+
+    # Fallback: system default input/output device
+    try:
+        default_key = "default_input_device" if require_input else "default_output_device"
+        hostapi = sd.query_hostapis(0)
+        default_index = int(hostapi.get(default_key, -1))
+        if default_index >= 0 and int(devices[default_index].get(channel_key, 0)) > 0:
+            emit({"type": "error", "code": "device_fallback", "message": f"Device '{device_id}' not found, using default device", "recoverable": True})
+            return default_index
+    except Exception:
+        pass
+
     return None
 
 

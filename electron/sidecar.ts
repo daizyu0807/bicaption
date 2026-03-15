@@ -35,7 +35,7 @@ export class SidecarBridge extends EventEmitter {
       return;
     }
 
-    const child = spawn(pythonBin, [sidecarPath], {
+    const child = spawn('/usr/bin/arch', ['-arm64', pythonBin, sidecarPath], {
       cwd: projectRoot,
       env: {
         ...process.env,

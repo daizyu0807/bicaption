@@ -19,5 +19,7 @@ contextBridge.exposeInMainWorld('app', {
   hideOverlay: () => ipcRenderer.invoke('overlay:hide'),
   chooseSaveDirectory: () => ipcRenderer.invoke('save:choose-directory'),
   openSaveDirectory: () => ipcRenderer.invoke('save:open-directory'),
+  checkModels: () => ipcRenderer.invoke('models:check'),
+  downloadModels: () => ipcRenderer.invoke('models:download'),
   subscribe: (eventName, handler) => on(eventName, handler),
 });

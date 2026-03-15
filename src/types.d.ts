@@ -1,4 +1,12 @@
-import type { AppSettings, CaptionConfig, OverlayBounds, SidecarEvent } from '../electron/types.js';
+import type { AppSettings, CaptionConfig, ModelDownloadProgress, ModelStatus, OverlayBounds, SidecarEvent } from '../electron/types.js';
+
+type SubscribeMap = {
+  'sidecar:event': SidecarEvent;
+  'settings:changed': AppSettings;
+  'models:progress': ModelDownloadProgress;
+  'models:done': ModelStatus;
+  'models:error': string;
+};
 
 declare global {
   interface Window {
@@ -7,7 +15,7 @@ declare global {
       saveSettings(partial: Partial<AppSettings>): Promise<AppSettings>;
       startSession(config: CaptionConfig): Promise<{ ok: boolean }>;
       stopSession(): Promise<{ ok: boolean }>;
-      listDevices(): Promise<Array<{ id: string; label: string }>>;
+      listDevices(): Promise<Array<{ id: string; label: string; kind: string }>>;
       showSettings(): Promise<{ ok: boolean }>;
       getOverlayBounds(): Promise<OverlayBounds>;
       setOverlayBounds(bounds: Partial<OverlayBounds>): Promise<OverlayBounds>;
@@ -15,9 +23,11 @@ declare global {
       hideOverlay(): Promise<{ ok: boolean }>;
       chooseSaveDirectory(): Promise<string | null>;
       openSaveDirectory(): Promise<{ ok: boolean }>;
-      subscribe(
-        eventName: 'sidecar:event' | 'settings:changed',
-        handler: (payload: SidecarEvent | AppSettings) => void,
+      checkModels(): Promise<ModelStatus>;
+      downloadModels(): Promise<{ ok: boolean }>;
+      subscribe<K extends keyof SubscribeMap>(
+        eventName: K,
+        handler: (payload: SubscribeMap[K]) => void,
       ): () => void;
     };
   }

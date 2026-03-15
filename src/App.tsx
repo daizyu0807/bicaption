@@ -1,5 +1,5 @@
 import { startTransition, useEffect, useRef, useState } from 'react';
-import type { AppSettings, SidecarEvent } from '../electron/types.js';
+import type { AppSettings, ModelDownloadProgress, ModelStatus, SidecarEvent } from '../electron/types.js';
 import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from './caption-state.js';
 
 function isOverlayRoute() {
@@ -127,22 +127,61 @@ function getInputHealthLabel(viewState: ReturnType<typeof useCaptionState>) {
   return '無音訊';
 }
 
+function getDownloadLabel(progress: ModelDownloadProgress | null): string {
+  if (!progress) return '下載模型';
+  if (progress.stage === 'extracting') return '解壓縮中…';
+  const name = progress.stage === 'sensevoice' ? 'SenseVoice' : 'VAD';
+  if (progress.totalMB > 0) {
+    return `下載 ${name}… ${progress.downloadedMB}/${progress.totalMB} MB (${progress.percent}%)`;
+  }
+  return `下載 ${name}…`;
+}
+
 function SettingsView({
   settings,
   devices,
   viewState,
+  modelStatus,
   onSave,
 }: {
   settings: AppSettings;
   devices: Array<{ id: string; label: string; kind: string }>;
   viewState: ReturnType<typeof useCaptionState>;
+  modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
   const [draft, setDraft] = useState(settings);
   const [overlaySuppressedLocal, setOverlaySuppressedLocal] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [localModelStatus, setLocalModelStatus] = useState(modelStatus);
   const isStreaming = viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
+  const modelsReady = localModelStatus?.ready ?? true;
+  const isDownloading = downloadProgress !== null;
+
+  useEffect(() => {
+    setLocalModelStatus(modelStatus);
+  }, [modelStatus]);
+
+  useEffect(() => {
+    const unsubs = [
+      window.app.subscribe('models:progress', (payload) => {
+        setDownloadProgress(payload as ModelDownloadProgress);
+        setDownloadError(null);
+      }),
+      window.app.subscribe('models:done', (payload) => {
+        setDownloadProgress(null);
+        setLocalModelStatus(payload as ModelStatus);
+      }),
+      window.app.subscribe('models:error', (payload) => {
+        setDownloadProgress(null);
+        setDownloadError(payload as string);
+      }),
+    ];
+    return () => unsubs.forEach((fn) => fn());
+  }, []);
 
   useEffect(() => {
     setDraft(settings);
@@ -160,6 +199,30 @@ function SettingsView({
       </header>
 
       <section className="settings-grid">
+        {!modelsReady && (
+          <article className="panel model-panel">
+            <h2>Models</h2>
+            <p className="model-hint">需要下載語音辨識模型才能使用（約 230 MB）</p>
+            <div className="model-status-row">
+              <span className={localModelStatus?.sensevoice ? 'model-ok' : 'model-missing'}>
+                SenseVoice {localModelStatus?.sensevoice ? '✓' : '✗'}
+              </span>
+              <span className={localModelStatus?.vad ? 'model-ok' : 'model-missing'}>
+                VAD {localModelStatus?.vad ? '✓' : '✗'}
+              </span>
+            </div>
+            {isDownloading && downloadProgress && (
+              <div className="progress-bar-container">
+                <div className="progress-bar-fill" style={{ width: `${downloadProgress.percent}%` }} />
+              </div>
+            )}
+            <button disabled={isDownloading} onClick={() => window.app.downloadModels()}>
+              {getDownloadLabel(downloadProgress)}
+            </button>
+            {downloadError && <p className="error-text">{downloadError}</p>}
+          </article>
+        )}
+
         <article className="panel">
           <h2>Session</h2>
           <label>
@@ -252,6 +315,7 @@ function SettingsView({
 
       <footer className="bottom-bar">
         <button
+          disabled={!modelsReady}
           onClick={async () => {
             if (isStreaming) {
               await window.app.stopSession();
@@ -265,7 +329,7 @@ function SettingsView({
             await window.app.startSession(sessionDraft);
           }}
         >
-          {isStreaming ? '套用' : '開始'}
+          {!modelsReady ? '需要下載模型' : isStreaming ? '套用' : '開始'}
         </button>
         <button className="secondary" disabled={!isStreaming} onClick={() => window.app.stopSession()}>
           停止
@@ -279,6 +343,7 @@ export function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [devices, setDevices] = useState<Array<{ id: string; label: string; kind: string }>>([]);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const captionState = useCaptionState();
   const overlayRoute = isOverlayRoute();
 
@@ -295,12 +360,25 @@ export function App() {
       return;
     }
 
-    window.app.loadSettings().then(setSettings).catch((error: unknown) => {
-      setBootError(error instanceof Error ? error.message : 'Failed to load settings');
+    Promise.all([
+      window.app.loadSettings(),
+      window.app.listDevices(),
+    ]).then(([loadedSettings, loadedDevices]) => {
+      setDevices(loadedDevices);
+      const inputDeviceIds = new Set(
+        loadedDevices.filter((d) => d.kind === 'input' || d.kind === 'duplex').map((d) => d.id),
+      );
+      if (loadedSettings.deviceId && !inputDeviceIds.has(loadedSettings.deviceId)) {
+        const first = loadedDevices.find((d) => d.kind === 'input' || d.kind === 'duplex');
+        if (first) {
+          loadedSettings = { ...loadedSettings, deviceId: first.id };
+        }
+      }
+      setSettings(loadedSettings);
+    }).catch((error: unknown) => {
+      setBootError(error instanceof Error ? error.message : 'Failed to load settings or devices');
     });
-    window.app.listDevices().then(setDevices).catch((error: unknown) => {
-      setBootError(error instanceof Error ? error.message : 'Failed to list devices');
-    });
+    window.app.checkModels().then(setModelStatus).catch(() => {});
     return window.app.subscribe('settings:changed', (payload) => {
       setSettings(payload as AppSettings);
     });
@@ -323,5 +401,5 @@ export function App() {
     return <OverlayView viewState={captionState} settings={settings} />;
   }
 
-  return <SettingsView settings={settings} devices={devices} viewState={captionState} onSave={onSave} />;
+  return <SettingsView settings={settings} devices={devices} viewState={captionState} modelStatus={modelStatus} onSave={onSave} />;
 }

@@ -5,7 +5,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SidecarBridge } from './sidecar.js';
 import { loadSettings, saveSettings } from './settings.js';
-import type { AppSettings, CaptionConfig, OverlayBounds, SidecarEvent } from './types.js';
+import { ModelDownloader } from './model-downloader.js';
+import type { AppSettings, CaptionConfig, ModelDownloadProgress, OverlayBounds, SidecarEvent } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -23,6 +24,7 @@ let saveFilePath: string | null = null;
 let isQuitting = false;
 
 const bridge = new SidecarBridge();
+const modelDownloader = new ModelDownloader(projectRoot);
 
 function formatSaveFilename(date: Date): string {
   const yy = String(date.getFullYear()).slice(2);
@@ -258,6 +260,22 @@ app.whenReady().then(() => {
     }
     return { ok: true };
   });
+  ipcMain.handle('models:check', () => {
+    return modelDownloader.checkStatus();
+  });
+  ipcMain.handle('models:download', () => {
+    modelDownloader.downloadAll().catch((err: Error) => {
+      sendToWindows('models:error', err.message);
+    });
+    return { ok: true };
+  });
+  modelDownloader.on('progress', (progress: ModelDownloadProgress) => {
+    sendToWindows('models:progress', progress);
+  });
+  modelDownloader.on('done', (status: unknown) => {
+    sendToWindows('models:done', status);
+  });
+
   ipcMain.handle('overlay:show', () => {
     overlaySuppressed = false;
     if (!overlayWindow || overlayWindow.isDestroyed()) {

@@ -355,6 +355,46 @@ button:disabled {
   font-size: 0.92em;
 }
 
+/* ── Model download ── */
+
+.model-panel {
+  border-color: rgba(255, 179, 108, 0.28);
+}
+
+.model-hint {
+  font-size: 0.78rem;
+  color: rgba(246, 239, 227, 0.6);
+  line-height: 1.5;
+}
+
+.model-status-row {
+  display: flex;
+  gap: 12px;
+  font-size: 0.78rem;
+}
+
+.model-ok {
+  color: #8cd98c;
+}
+
+.model-missing {
+  color: #ff8d8d;
+}
+
+.progress-bar-container {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff9b53, #ffd36e);
+  transition: width 200ms ease;
+}
+
 @media (max-width: 900px) {
   .topbar {
     flex-wrap: wrap;
