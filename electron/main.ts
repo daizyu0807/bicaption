@@ -20,6 +20,7 @@ let settingsWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let overlaySuppressed = false;
 let saveFilePath: string | null = null;
+let isQuitting = false;
 
 const bridge = new SidecarBridge();
 
@@ -56,36 +57,45 @@ function appendCaption(event: SidecarEvent) {
 }
 
 function sendToWindows(channel: string, payload: unknown) {
-  settingsWindow?.webContents.send(channel, payload);
-  overlayWindow?.webContents.send(channel, payload);
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send(channel, payload);
+  }
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send(channel, payload);
+  }
 }
 
 function setOverlayVisible(visible: boolean) {
-  if (!overlayWindow) {
-    return;
-  }
   if (visible) {
     if (overlaySuppressed) {
       return;
     }
-    overlayWindow.showInactive();
+    if (!overlayWindow || overlayWindow.isDestroyed()) {
+      createOverlayWindow();
+    }
+    overlayWindow?.showInactive();
   } else {
-    overlayWindow.hide();
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.hide();
+    }
   }
 }
 
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 360,
-    height: 560,
+    height: 610,
     title: 'Realtime Bilingual Subtitles',
     webPreferences: {
       preload: preloadPath,
     },
   });
 
-  settingsWindow.on('closed', () => {
-    settingsWindow = null;
+  settingsWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      settingsWindow?.hide();
+    }
   });
 
   void settingsWindow.loadURL(rendererEntry);
@@ -197,14 +207,14 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('session:devices', () => {
     try {
-      const output = execFileSync(pythonBin, [sidecarScript, '--list-devices'], {
+      const output = execFileSync('/usr/bin/arch', ['-arm64', pythonBin, sidecarScript, '--list-devices'], {
         cwd: projectRoot,
         encoding: 'utf-8',
       });
-      return JSON.parse(output) as Array<{ id: string; label: string }>;
+      return JSON.parse(output) as Array<{ id: string; label: string; kind: string }>;
     } catch {
       return [
-        { id: 'blackhole', label: 'BlackHole 2ch' },
+        { id: 'blackhole', label: 'BlackHole 2ch', kind: 'duplex' },
       ];
     }
   });
@@ -250,6 +260,9 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('overlay:show', () => {
     overlaySuppressed = false;
+    if (!overlayWindow || overlayWindow.isDestroyed()) {
+      createOverlayWindow();
+    }
     overlayWindow?.showInactive();
     return { ok: true };
   });
@@ -260,7 +273,24 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
+app.on('activate', () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show();
+    settingsWindow.focus();
+  } else {
+    createSettingsWindow();
+  }
+});
+
+app.dock?.show();
+
+app.on('before-quit', () => {
+  isQuitting = true;
   bridge.dispose();
-  app.quit();
+});
+
+app.on('window-all-closed', () => {
+  if (isQuitting) {
+    app.quit();
+  }
 });

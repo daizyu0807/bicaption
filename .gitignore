@@ -2,3 +2,5 @@ node_modules/
 dist/
 .venv/
 __pycache__/
+*.onnx
+python/sherpa-onnx-sense-voice-*/

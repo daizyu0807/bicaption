@@ -3,9 +3,10 @@ import type { AppSettings } from './types.js';
 
 export const defaultSettings: AppSettings = {
   deviceId: 'blackhole',
-  sourceLang: 'en',
+  outputDeviceId: '',
+  sourceLang: 'zh',
   targetLang: 'zh-TW',
-  sttModel: 'tiny',
+  sttModel: 'turbo',
   translateModel: 'disabled',
   chunkMs: 900,
   beamSize: 1,

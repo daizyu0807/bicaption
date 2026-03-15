@@ -16,7 +16,7 @@ function OverlayView({
   const overlayStyle = applySettingsOverlayStyle(settings);
   const hasVisibleCaptions = viewState.captions.length > 0 || Boolean(viewState.partial);
   const shouldShowShell = hasVisibleCaptions || viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
-  const translationEnabled = settings.targetLang !== settings.sourceLang && settings.translateModel !== 'disabled';
+  const translationEnabled = isTranslationEnabled(settings);
   const stackRef = useRef<HTMLElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -47,7 +47,7 @@ function OverlayView({
             <span aria-hidden="true">{isCollapsed ? '+' : '−'}</span>
           </button>
         </div>
-        <span className="overlay-title">{translationEnabled ? 'Realtime Bilingual Captions' : 'Realtime English Captions'}</span>
+        <span className="overlay-title">{translationEnabled ? 'Realtime Bilingual Captions' : 'Realtime Captions'}</span>
       </header>
       {!isCollapsed && (
         <section className="overlay-body" ref={stackRef}>
@@ -98,35 +98,15 @@ function useCaptionState() {
   return viewState;
 }
 
-function applyPreset(
-  current: AppSettings,
-  preset: 'fast' | 'balanced' | 'accurate',
-): AppSettings {
-  if (preset === 'fast') {
-    return { ...current, sttModel: 'tiny', chunkMs: 700, beamSize: 1, bestOf: 1, vadFilter: false, conditionOnPrev: false };
-  }
-  if (preset === 'accurate') {
-    return { ...current, sttModel: 'small', chunkMs: 1400, beamSize: 5, bestOf: 3, vadFilter: true, conditionOnPrev: true };
-  }
-  return { ...current, sttModel: 'base', chunkMs: 1000, beamSize: 3, bestOf: 1, vadFilter: true, conditionOnPrev: false };
-}
-
 function isTranslationEnabled(settings: AppSettings): boolean {
-  return settings.translateModel !== 'disabled' && settings.targetLang !== settings.sourceLang;
-}
-
-function getPresetLabel(settings: AppSettings) {
-  if (settings.sttModel === 'tiny') return '快速';
-  if (settings.sttModel === 'small') return '精準';
-  return '平衡';
+  return settings.sourceLang === 'auto' || settings.targetLang !== settings.sourceLang;
 }
 
 function getSessionSummary(viewState: ReturnType<typeof useCaptionState>, settings: AppSettings) {
   if (viewState.sessionState === 'streaming') {
-    const preset = getPresetLabel(settings);
-    const translation = isTranslationEnabled(settings) ? '・雙語' : '';
+    const translation = isTranslationEnabled(settings) ? '雙語' : '單語';
     const audio = getInputHealthLabel(viewState);
-    return `${preset}${translation}・${audio}`;
+    return `SenseVoice・${translation}・${audio}`;
   }
   if (viewState.sessionState === 'error') {
     return viewState.lastError ?? '發生錯誤，請檢查輸入裝置。';
@@ -154,28 +134,20 @@ function SettingsView({
   onSave,
 }: {
   settings: AppSettings;
-  devices: Array<{ id: string; label: string }>;
+  devices: Array<{ id: string; label: string; kind: string }>;
   viewState: ReturnType<typeof useCaptionState>;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
+  const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
+  const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
   const [draft, setDraft] = useState(settings);
   const [overlaySuppressedLocal, setOverlaySuppressedLocal] = useState(false);
   const isStreaming = viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
-  const translationOn = isTranslationEnabled(draft);
 
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
 
-  const currentPreset = draft.sttModel === 'tiny' && draft.chunkMs === 700
-    ? 'fast'
-    : draft.sttModel === 'small' && draft.chunkMs === 1400
-      ? 'accurate'
-      : 'balanced';
-
-  function onPresetChange(preset: string) {
-    setDraft((current) => applyPreset(current, preset as 'fast' | 'balanced' | 'accurate'));
-  }
 
   return (
     <main className="settings-shell">
@@ -191,9 +163,9 @@ function SettingsView({
         <article className="panel">
           <h2>Session</h2>
           <label>
-            Input device
+            輸入裝置（麥克風）
             <select value={draft.deviceId} onChange={(event) => setDraft({ ...draft, deviceId: event.target.value })}>
-              {devices.map((device) => (
+              {inputDevices.map((device) => (
                 <option key={device.id} value={device.id}>
                   {device.label}
                 </option>
@@ -201,17 +173,21 @@ function SettingsView({
             </select>
           </label>
           <label>
-            Speed preset
-            <select value={currentPreset} onChange={(event) => onPresetChange(event.target.value)}>
-              <option value="fast">Fast (tiny / 700ms)</option>
-              <option value="balanced">Balanced (base / 1000ms)</option>
-              <option value="accurate">Accurate (small / 1400ms)</option>
+            系統音訊（Loopback）
+            <select value={draft.outputDeviceId} onChange={(event) => setDraft({ ...draft, outputDeviceId: event.target.value })}>
+              <option value="">不使用</option>
+              {loopbackDevices.map((device) => (
+                <option key={device.id} value={device.id}>
+                  {device.label}
+                </option>
+              ))}
             </select>
           </label>
           <div className="form-row-2">
             <label>
               Source lang
               <select value={draft.sourceLang} onChange={(event) => setDraft({ ...draft, sourceLang: event.target.value })}>
+                <option value="auto">自動偵測</option>
                 <option value="en">English</option>
                 <option value="zh">中文</option>
                 <option value="ja">日本語</option>
@@ -220,7 +196,7 @@ function SettingsView({
             </label>
             <label>
               Target lang
-              <select value={draft.targetLang} onChange={(event) => setDraft({ ...draft, targetLang: event.target.value })} disabled={!translationOn}>
+              <select value={draft.targetLang} onChange={(event) => setDraft({ ...draft, targetLang: event.target.value })}>
                 <option value="zh-TW">繁體中文</option>
                 <option value="en">English</option>
                 <option value="ja">日本語</option>
@@ -228,23 +204,7 @@ function SettingsView({
               </select>
             </label>
           </div>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={translationOn}
-              onChange={(event) => setDraft({
-                ...draft,
-                translateModel: event.target.checked ? 'google' : 'disabled',
-                targetLang: event.target.checked ? (draft.targetLang === draft.sourceLang ? 'zh-TW' : draft.targetLang) : draft.targetLang,
-              })}
-            />
-            雙語字幕
-          </label>
-        </article>
-
-        <article className="panel">
-          <h2>Output</h2>
-          <button className="secondary" onClick={() => {
+          <button className={overlaySuppressedLocal ? 'secondary' : ''} onClick={() => {
             if (overlaySuppressedLocal) {
               window.app.showOverlay();
               setOverlaySuppressedLocal(false);
@@ -255,6 +215,10 @@ function SettingsView({
           }}>
             {overlaySuppressedLocal ? '顯示字幕' : '隱藏字幕'}
           </button>
+        </article>
+
+        <article className="panel">
+          <h2>Output</h2>
           <div className="form-row-2">
             <label>
               Opacity
@@ -288,13 +252,20 @@ function SettingsView({
 
       <footer className="bottom-bar">
         <button
-          disabled={isStreaming}
           onClick={async () => {
-            await onSave(draft);
-            await window.app.startSession(draft);
+            if (isStreaming) {
+              await window.app.stopSession();
+              await new Promise((r) => setTimeout(r, 300));
+            }
+            const sessionDraft = {
+              ...draft,
+              translateModel: isTranslationEnabled(draft) ? 'google' : 'disabled',
+            };
+            await onSave(sessionDraft);
+            await window.app.startSession(sessionDraft);
           }}
         >
-          開始
+          {isStreaming ? '套用' : '開始'}
         </button>
         <button className="secondary" disabled={!isStreaming} onClick={() => window.app.stopSession()}>
           停止
@@ -306,7 +277,7 @@ function SettingsView({
 
 export function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [devices, setDevices] = useState<Array<{ id: string; label: string }>>([]);
+  const [devices, setDevices] = useState<Array<{ id: string; label: string; kind: string }>>([]);
   const [bootError, setBootError] = useState<string | null>(null);
   const captionState = useCaptionState();
   const overlayRoute = isOverlayRoute();
