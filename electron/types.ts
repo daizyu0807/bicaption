@@ -101,12 +101,15 @@ export interface OverlayBounds {
 
 export interface ModelStatus {
   sensevoice: boolean;
+  whisperTinyEn: boolean;
+  whisperSmall: boolean;
+  zipformerKo: boolean;
   vad: boolean;
   ready: boolean;
 }
 
 export interface ModelDownloadProgress {
-  stage: 'sensevoice' | 'vad' | 'extracting';
+  stage: 'sensevoice' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad' | 'extracting';
   percent: number;
   downloadedMB: number;
   totalMB: number;

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, shell, systemPreferences } from 'electron';
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -86,7 +86,8 @@ function setOverlayVisible(visible: boolean) {
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
     width: 360,
-    height: 610,
+    height: 720,
+    minHeight: 500,
     title: 'BiCaption',
     webPreferences: {
       preload: preloadPath,
@@ -186,6 +187,17 @@ function forwardEvent(event: SidecarEvent) {
   sendToWindows('sidecar:event', event);
 }
 
+async function ensureMicrophoneAccess() {
+  if (process.platform !== 'darwin') {
+    return true;
+  }
+  const status = systemPreferences.getMediaAccessStatus('microphone');
+  if (status === 'granted') {
+    return true;
+  }
+  return systemPreferences.askForMediaAccess('microphone');
+}
+
 app.whenReady().then(() => {
   createSettingsWindow();
   createOverlayWindow();
@@ -207,23 +219,32 @@ app.whenReady().then(() => {
     bridge.stopSession();
     return { ok: true };
   });
-  ipcMain.handle('session:devices', () => {
-    try {
-      const output = execFileSync('/usr/bin/arch', ['-arm64', pythonBin, sidecarScript, '--list-devices'], {
-        cwd: projectRoot,
-        encoding: 'utf-8',
-      });
-      return JSON.parse(output) as Array<{ id: string; label: string; kind: string }>;
-    } catch {
-      return [
-        { id: 'blackhole', label: 'BlackHole 2ch', kind: 'duplex' },
-      ];
+  ipcMain.handle('session:devices', async () => {
+    const hasAccess = await ensureMicrophoneAccess();
+    if (!hasAccess) {
+      throw new Error('Microphone permission was denied. Allow microphone access in System Settings and restart the app.');
     }
+
+    const output = execFileSync('/usr/bin/arch', ['-arm64', pythonBin, sidecarScript, '--list-devices'], {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+    });
+    const devices = JSON.parse(output) as Array<{ id: string; label: string; kind: string }>;
+    if (devices.length === 0) {
+      throw new Error('No audio devices were detected. Check microphone permission and connected audio devices, then restart the app.');
+    }
+    return devices;
   });
   ipcMain.handle('app:show-settings', () => {
     settingsWindow?.show();
     settingsWindow?.focus();
     return { ok: true };
+  });
+  ipcMain.handle('overlay:get-position', () => {
+    return overlayWindow?.getPosition() ?? [0, 0];
+  });
+  ipcMain.handle('overlay:set-position', (_event, x: number, y: number) => {
+    overlayWindow?.setPosition(Math.round(x), Math.round(y));
   });
   ipcMain.handle('overlay:get-bounds', () => {
     return overlayWindow?.getBounds() ?? { x: 0, y: 0, width: 900, height: 220 };

@@ -48,6 +48,7 @@ select {
   flex-direction: column;
   gap: 8px;
   overflow: hidden;
+  min-height: 0;
 }
 
 .topbar {
@@ -261,7 +262,6 @@ button:disabled {
   background: rgba(58, 66, 78, 0.96);
   border-bottom: 1px solid rgba(0, 0, 0, 0.28);
   cursor: move;
-  -webkit-app-region: drag;
 }
 
 .overlay-title {

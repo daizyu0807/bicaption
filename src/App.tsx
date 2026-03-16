@@ -19,6 +19,7 @@ function OverlayView({
   const translationEnabled = isTranslationEnabled(settings);
   const stackRef = useRef<HTMLElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; winX: number; winY: number } | null>(null);
 
   useEffect(() => {
     if (!stackRef.current) {
@@ -26,6 +27,25 @@ function OverlayView({
     }
     stackRef.current.scrollTop = stackRef.current.scrollHeight;
   }, [viewState.captions, viewState.partial]);
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const dx = e.screenX - drag.startX;
+      const dy = e.screenY - drag.startY;
+      window.app.setOverlayPosition(drag.winX + dx, drag.winY + dy);
+    }
+    function onMouseUp() {
+      dragRef.current = null;
+    }
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   if (!shouldShowShell) {
     return <main className="overlay-window overlay-hidden" />;
@@ -38,7 +58,11 @@ function OverlayView({
 
   return (
     <main className="overlay-window" style={overlayStyle}>
-      <header className="overlay-titlebar">
+      <header className="overlay-titlebar" onMouseDown={async (e) => {
+        if ((e.target as HTMLElement).closest('.no-drag')) return;
+        const [winX, winY] = await window.app.getOverlayPosition();
+        dragRef.current = { startX: e.screenX, startY: e.screenY, winX, winY };
+      }}>
         <div className="overlay-window-controls no-drag">
           <button className="traffic-light traffic-close" onClick={closeOverlayAndFocusSettings} aria-label="Hide overlay">
             <span aria-hidden="true">×</span>
@@ -99,6 +123,7 @@ function useCaptionState() {
 }
 
 function isTranslationEnabled(settings: AppSettings): boolean {
+  if (settings.translateModel === 'disabled') return false;
   return settings.sourceLang === 'auto' || settings.targetLang !== settings.sourceLang;
 }
 
@@ -106,7 +131,9 @@ function getSessionSummary(viewState: ReturnType<typeof useCaptionState>, settin
   if (viewState.sessionState === 'streaming') {
     const translation = isTranslationEnabled(settings) ? '雙語' : '單語';
     const audio = getInputHealthLabel(viewState);
-    return `SenseVoice・${translation}・${audio}`;
+    const modelNames: Record<string, string> = { sensevoice: 'SenseVoice', 'whisper-tiny-en': 'Whisper tiny.en', 'whisper-small': 'Whisper small', 'zipformer-ko': 'Zipformer Ko' };
+    const model = modelNames[settings.sttModel] ?? settings.sttModel;
+    return `${model}・${translation}・${audio}`;
   }
   if (viewState.sessionState === 'error') {
     return viewState.lastError ?? '發生錯誤，請檢查輸入裝置。';
@@ -130,7 +157,8 @@ function getInputHealthLabel(viewState: ReturnType<typeof useCaptionState>) {
 function getDownloadLabel(progress: ModelDownloadProgress | null): string {
   if (!progress) return '下載模型';
   if (progress.stage === 'extracting') return '解壓縮中…';
-  const name = progress.stage === 'sensevoice' ? 'SenseVoice' : 'VAD';
+  const stageNames: Record<string, string> = { sensevoice: 'SenseVoice', 'whisper-tiny-en': 'Whisper tiny.en', 'whisper-small': 'Whisper small', 'zipformer-ko': 'Zipformer Korean', vad: 'VAD' };
+  const name = stageNames[progress.stage] ?? progress.stage;
   if (progress.totalMB > 0) {
     return `下載 ${name}… ${progress.downloadedMB}/${progress.totalMB} MB (${progress.percent}%)`;
   }
@@ -150,15 +178,23 @@ function SettingsView({
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
+  const [draft, setDraft] = useState(settings);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
-  const [draft, setDraft] = useState(settings);
   const [overlaySuppressedLocal, setOverlaySuppressedLocal] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [localModelStatus, setLocalModelStatus] = useState(modelStatus);
   const isStreaming = viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
-  const modelsReady = localModelStatus?.ready ?? true;
+  const translationOn = isTranslationEnabled(draft);
+  const modelReadyMap: Record<string, boolean> = {
+    sensevoice: localModelStatus?.sensevoice ?? false,
+    'whisper-tiny-en': localModelStatus?.whisperTinyEn ?? false,
+    'whisper-small': localModelStatus?.whisperSmall ?? false,
+    'zipformer-ko': localModelStatus?.zipformerKo ?? false,
+  };
+  const selectedModelReady = modelReadyMap[draft.sttModel] ?? false;
+  const modelsReady = selectedModelReady && (localModelStatus?.vad ?? true);
   const isDownloading = downloadProgress !== null;
 
   useEffect(() => {
@@ -199,13 +235,22 @@ function SettingsView({
       </header>
 
       <section className="settings-grid">
-        {!modelsReady && (
+        {(!(localModelStatus?.sensevoice && localModelStatus?.whisperTinyEn && localModelStatus?.whisperSmall && localModelStatus?.zipformerKo && localModelStatus?.vad)) && (
           <article className="panel model-panel">
             <h2>Models</h2>
-            <p className="model-hint">需要下載語音辨識模型才能使用（約 230 MB）</p>
+            <p className="model-hint">部分模型尚未下載，點擊下方按鈕下載</p>
             <div className="model-status-row">
               <span className={localModelStatus?.sensevoice ? 'model-ok' : 'model-missing'}>
                 SenseVoice {localModelStatus?.sensevoice ? '✓' : '✗'}
+              </span>
+              <span className={localModelStatus?.whisperTinyEn ? 'model-ok' : 'model-missing'}>
+                Whisper tiny.en {localModelStatus?.whisperTinyEn ? '✓' : '✗'}
+              </span>
+              <span className={localModelStatus?.whisperSmall ? 'model-ok' : 'model-missing'}>
+                Whisper small {localModelStatus?.whisperSmall ? '✓' : '✗'}
+              </span>
+              <span className={localModelStatus?.zipformerKo ? 'model-ok' : 'model-missing'}>
+                Zipformer Ko {localModelStatus?.zipformerKo ? '✓' : '✗'}
               </span>
               <span className={localModelStatus?.vad ? 'model-ok' : 'model-missing'}>
                 VAD {localModelStatus?.vad ? '✓' : '✗'}
@@ -236,6 +281,15 @@ function SettingsView({
             </select>
           </label>
           <label>
+            語音辨識模型
+            <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
+              <option value="sensevoice">SenseVoice — 中文/粵語最佳，支援中英日韓</option>
+              <option value="whisper-tiny-en">Whisper tiny.en — 純英文，最快</option>
+              <option value="whisper-small">Whisper small — 日文/多語言，較慢</option>
+              <option value="zipformer-ko">Zipformer Korean — 韓文專用，最準</option>
+            </select>
+          </label>
+          <label>
             系統音訊（Loopback）
             <select value={draft.outputDeviceId} onChange={(event) => setDraft({ ...draft, outputDeviceId: event.target.value })}>
               <option value="">不使用</option>
@@ -249,7 +303,13 @@ function SettingsView({
           <div className="form-row-2">
             <label>
               Source lang
-              <select value={draft.sourceLang} onChange={(event) => setDraft({ ...draft, sourceLang: event.target.value })}>
+              <select value={draft.sourceLang} onChange={(event) => {
+                const lang = event.target.value;
+                const recommendedModel: Record<string, string> = {
+                  auto: 'sensevoice', zh: 'sensevoice', en: 'whisper-tiny-en', ja: 'whisper-small', ko: 'zipformer-ko',
+                };
+                setDraft({ ...draft, sourceLang: lang, sttModel: recommendedModel[lang] ?? 'sensevoice' });
+              }}>
                 <option value="auto">自動偵測</option>
                 <option value="en">English</option>
                 <option value="zh">中文</option>
@@ -259,7 +319,7 @@ function SettingsView({
             </label>
             <label>
               Target lang
-              <select value={draft.targetLang} onChange={(event) => setDraft({ ...draft, targetLang: event.target.value })}>
+              <select value={draft.targetLang} onChange={(event) => setDraft({ ...draft, targetLang: event.target.value })} disabled={!translationOn}>
                 <option value="zh-TW">繁體中文</option>
                 <option value="en">English</option>
                 <option value="ja">日本語</option>
@@ -267,6 +327,18 @@ function SettingsView({
               </select>
             </label>
           </div>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={translationOn}
+              onChange={(event) => setDraft({
+                ...draft,
+                translateModel: event.target.checked ? 'google' : 'disabled',
+                targetLang: event.target.checked ? (draft.targetLang === draft.sourceLang ? 'zh-TW' : draft.targetLang) : draft.targetLang,
+              })}
+            />
+            雙語字幕
+          </label>
           <button className={overlaySuppressedLocal ? 'secondary' : ''} onClick={() => {
             if (overlaySuppressedLocal) {
               window.app.showOverlay();

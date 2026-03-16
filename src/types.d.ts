@@ -17,6 +17,8 @@ declare global {
       stopSession(): Promise<{ ok: boolean }>;
       listDevices(): Promise<Array<{ id: string; label: string; kind: string }>>;
       showSettings(): Promise<{ ok: boolean }>;
+      getOverlayPosition(): Promise<[number, number]>;
+      setOverlayPosition(x: number, y: number): Promise<void>;
       getOverlayBounds(): Promise<OverlayBounds>;
       setOverlayBounds(bounds: Partial<OverlayBounds>): Promise<OverlayBounds>;
       showOverlay(): Promise<{ ok: boolean }>;

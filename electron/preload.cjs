@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('app', {
   stopSession: () => ipcRenderer.invoke('session:stop'),
   listDevices: () => ipcRenderer.invoke('session:devices'),
   showSettings: () => ipcRenderer.invoke('app:show-settings'),
+  getOverlayPosition: () => ipcRenderer.invoke('overlay:get-position'),
+  setOverlayPosition: (x, y) => ipcRenderer.invoke('overlay:set-position', x, y),
   getOverlayBounds: () => ipcRenderer.invoke('overlay:get-bounds'),
   setOverlayBounds: (bounds) => ipcRenderer.invoke('overlay:set-bounds', bounds),
   showOverlay: () => ipcRenderer.invoke('overlay:show'),

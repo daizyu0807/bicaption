@@ -6,7 +6,7 @@ export const defaultSettings: AppSettings = {
   outputDeviceId: '',
   sourceLang: 'zh',
   targetLang: 'zh-TW',
-  sttModel: 'turbo',
+  sttModel: 'sensevoice',
   translateModel: 'disabled',
   chunkMs: 900,
   beamSize: 1,

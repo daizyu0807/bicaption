@@ -4,6 +4,9 @@ dist/
 __pycache__/
 *.onnx
 python/sherpa-onnx-sense-voice-*/
+python/sherpa-onnx-whisper-tiny.en/
+python/sherpa-onnx-whisper-small/
+python/sherpa-onnx-zipformer-korean-*/
 .env
 .env.*
 .DS_Store

@@ -25,6 +25,9 @@ TRANSLATION_BATCH_WINDOW_MS = 220
 SHORT_SEGMENT_WORDS = 4
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SENSEVOICE_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17")
+WHISPER_TINY_EN_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-whisper-tiny.en")
+WHISPER_SMALL_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-whisper-small")
+ZIPFORMER_KOREAN_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-zipformer-korean-2024-06-24")
 SILERO_VAD_MODEL = os.path.join(SCRIPT_DIR, "silero_vad.onnx")
 
 
@@ -301,7 +304,7 @@ class AudioCapture:
         return np.clip(primary + secondary, -1.0, 1.0).astype(np.float32)
 
 
-MAX_SPEECH_SECONDS = 30.0  # Let VAD segment naturally by silence
+MAX_SPEECH_SECONDS = 10.0  # Force segment split for multi-speaker scenarios
 MIN_SPEECH_SAMPLES = int(SAMPLE_RATE * 0.3)  # Ignore segments shorter than 0.3s
 
 
@@ -319,7 +322,7 @@ class SenseVoiceTranscriber:
         )
         vad_config = sherpa_onnx.VadModelConfig()
         vad_config.silero_vad.model = SILERO_VAD_MODEL
-        vad_config.silero_vad.min_silence_duration = 0.5
+        vad_config.silero_vad.min_silence_duration = 0.3
         vad_config.silero_vad.min_speech_duration = 0.1
         vad_config.silero_vad.max_speech_duration = MAX_SPEECH_SECONDS
         vad_config.silero_vad.threshold = 0.25
@@ -375,6 +378,226 @@ class SenseVoiceTranscriber:
         self._vad_buf = np.concatenate([self._vad_buf, samples.reshape(-1)])
 
         # Feed VAD in window-sized chunks
+        while len(self._vad_buf) >= self.vad_window:
+            chunk = self._vad_buf[:self.vad_window]
+            self._vad_buf = self._vad_buf[self.vad_window:]
+            self.vad.accept_waveform(chunk)
+
+        return self._process_vad_queue(base_time_ms)
+
+
+class WhisperTinyEnTranscriber:
+    """VAD + Whisper tiny.en offline recognizer optimized for English."""
+
+    def __init__(self) -> None:
+        self.recognizer = sherpa_onnx.OfflineRecognizer.from_whisper(
+            encoder=os.path.join(WHISPER_TINY_EN_MODEL_DIR, "tiny.en-encoder.int8.onnx"),
+            decoder=os.path.join(WHISPER_TINY_EN_MODEL_DIR, "tiny.en-decoder.int8.onnx"),
+            tokens=os.path.join(WHISPER_TINY_EN_MODEL_DIR, "tiny.en-tokens.txt"),
+            language="en",
+            task="transcribe",
+            num_threads=2,
+            debug=False,
+        )
+        vad_config = sherpa_onnx.VadModelConfig()
+        vad_config.silero_vad.model = SILERO_VAD_MODEL
+        vad_config.silero_vad.min_silence_duration = 0.3
+        vad_config.silero_vad.min_speech_duration = 0.1
+        vad_config.silero_vad.max_speech_duration = MAX_SPEECH_SECONDS
+        vad_config.silero_vad.threshold = 0.25
+        vad_config.sample_rate = SAMPLE_RATE
+        self.vad = sherpa_onnx.VoiceActivityDetector(vad_config, buffer_size_in_seconds=60)
+        self.vad_window = 512
+        self._vad_buf = np.array([], dtype=np.float32)
+        self.finalized_ids: set[str] = set()
+        self._segment_counter = 0
+
+    def _recognize(self, audio: np.ndarray) -> tuple[str, str]:
+        stream = self.recognizer.create_stream()
+        stream.accept_waveform(SAMPLE_RATE, audio)
+        self.recognizer.decode_stream(stream)
+        text = normalize_text(stream.result.text)
+        return text, "en"
+
+    def _process_vad_queue(self, base_time_ms: int) -> list[TranscriptChunk]:
+        results: list[TranscriptChunk] = []
+        while not self.vad.empty():
+            speech = self.vad.front
+            speech_samples = np.array(speech.samples, dtype=np.float32)
+            self.vad.pop()
+
+            if len(speech_samples) < MIN_SPEECH_SAMPLES:
+                continue
+
+            text, lang = self._recognize(speech_samples)
+            if not text or len(text.replace(" ", "")) < 2:
+                continue
+
+            self._segment_counter += 1
+            duration_ms = int(len(speech_samples) / SAMPLE_RATE * 1000)
+            results.append(TranscriptChunk(
+                segment_id=f"seg-{self._segment_counter}",
+                source_text=text,
+                started_at_ms=base_time_ms,
+                ended_at_ms=base_time_ms + duration_ms,
+                confidence=0.0,
+                detected_lang=lang,
+            ))
+        return results
+
+    def feed_audio(self, samples: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        if samples.size == 0:
+            return []
+
+        self._vad_buf = np.concatenate([self._vad_buf, samples.reshape(-1)])
+
+        while len(self._vad_buf) >= self.vad_window:
+            chunk = self._vad_buf[:self.vad_window]
+            self._vad_buf = self._vad_buf[self.vad_window:]
+            self.vad.accept_waveform(chunk)
+
+        return self._process_vad_queue(base_time_ms)
+
+
+class WhisperSmallTranscriber:
+    """VAD + Whisper small multilingual recognizer for ja/ko and other languages."""
+
+    def __init__(self, language: str = "") -> None:
+        self.recognizer = sherpa_onnx.OfflineRecognizer.from_whisper(
+            encoder=os.path.join(WHISPER_SMALL_MODEL_DIR, "small-encoder.int8.onnx"),
+            decoder=os.path.join(WHISPER_SMALL_MODEL_DIR, "small-decoder.int8.onnx"),
+            tokens=os.path.join(WHISPER_SMALL_MODEL_DIR, "small-tokens.txt"),
+            language=language or "",
+            task="transcribe",
+            num_threads=2,
+            debug=False,
+        )
+        self._language = language
+        vad_config = sherpa_onnx.VadModelConfig()
+        vad_config.silero_vad.model = SILERO_VAD_MODEL
+        vad_config.silero_vad.min_silence_duration = 0.3
+        vad_config.silero_vad.min_speech_duration = 0.1
+        vad_config.silero_vad.max_speech_duration = MAX_SPEECH_SECONDS
+        vad_config.silero_vad.threshold = 0.25
+        vad_config.sample_rate = SAMPLE_RATE
+        self.vad = sherpa_onnx.VoiceActivityDetector(vad_config, buffer_size_in_seconds=60)
+        self.vad_window = 512
+        self._vad_buf = np.array([], dtype=np.float32)
+        self.finalized_ids: set[str] = set()
+        self._segment_counter = 0
+
+    def _recognize(self, audio: np.ndarray) -> tuple[str, str]:
+        stream = self.recognizer.create_stream()
+        stream.accept_waveform(SAMPLE_RATE, audio)
+        self.recognizer.decode_stream(stream)
+        text = normalize_text(stream.result.text)
+        lang = self._language or "auto"
+        return text, lang
+
+    def _process_vad_queue(self, base_time_ms: int) -> list[TranscriptChunk]:
+        results: list[TranscriptChunk] = []
+        while not self.vad.empty():
+            speech = self.vad.front
+            speech_samples = np.array(speech.samples, dtype=np.float32)
+            self.vad.pop()
+
+            if len(speech_samples) < MIN_SPEECH_SAMPLES:
+                continue
+
+            text, lang = self._recognize(speech_samples)
+            if not text or len(text.replace(" ", "")) < 2:
+                continue
+
+            self._segment_counter += 1
+            duration_ms = int(len(speech_samples) / SAMPLE_RATE * 1000)
+            results.append(TranscriptChunk(
+                segment_id=f"seg-{self._segment_counter}",
+                source_text=text,
+                started_at_ms=base_time_ms,
+                ended_at_ms=base_time_ms + duration_ms,
+                confidence=0.0,
+                detected_lang=lang,
+            ))
+        return results
+
+    def feed_audio(self, samples: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        if samples.size == 0:
+            return []
+
+        self._vad_buf = np.concatenate([self._vad_buf, samples.reshape(-1)])
+
+        while len(self._vad_buf) >= self.vad_window:
+            chunk = self._vad_buf[:self.vad_window]
+            self._vad_buf = self._vad_buf[self.vad_window:]
+            self.vad.accept_waveform(chunk)
+
+        return self._process_vad_queue(base_time_ms)
+
+
+class ZipformerKoreanTranscriber:
+    """VAD + Zipformer transducer optimized for Korean."""
+
+    def __init__(self) -> None:
+        self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+            encoder=os.path.join(ZIPFORMER_KOREAN_MODEL_DIR, "encoder-epoch-99-avg-1.int8.onnx"),
+            decoder=os.path.join(ZIPFORMER_KOREAN_MODEL_DIR, "decoder-epoch-99-avg-1.onnx"),
+            joiner=os.path.join(ZIPFORMER_KOREAN_MODEL_DIR, "joiner-epoch-99-avg-1.int8.onnx"),
+            tokens=os.path.join(ZIPFORMER_KOREAN_MODEL_DIR, "tokens.txt"),
+            num_threads=2,
+            debug=False,
+        )
+        vad_config = sherpa_onnx.VadModelConfig()
+        vad_config.silero_vad.model = SILERO_VAD_MODEL
+        vad_config.silero_vad.min_silence_duration = 0.3
+        vad_config.silero_vad.min_speech_duration = 0.1
+        vad_config.silero_vad.max_speech_duration = MAX_SPEECH_SECONDS
+        vad_config.silero_vad.threshold = 0.25
+        vad_config.sample_rate = SAMPLE_RATE
+        self.vad = sherpa_onnx.VoiceActivityDetector(vad_config, buffer_size_in_seconds=60)
+        self.vad_window = 512
+        self._vad_buf = np.array([], dtype=np.float32)
+        self.finalized_ids: set[str] = set()
+        self._segment_counter = 0
+
+    def _recognize(self, audio: np.ndarray) -> tuple[str, str]:
+        stream = self.recognizer.create_stream()
+        stream.accept_waveform(SAMPLE_RATE, audio)
+        self.recognizer.decode_stream(stream)
+        text = normalize_text(stream.result.text)
+        return text, "ko"
+
+    def _process_vad_queue(self, base_time_ms: int) -> list[TranscriptChunk]:
+        results: list[TranscriptChunk] = []
+        while not self.vad.empty():
+            speech = self.vad.front
+            speech_samples = np.array(speech.samples, dtype=np.float32)
+            self.vad.pop()
+
+            if len(speech_samples) < MIN_SPEECH_SAMPLES:
+                continue
+
+            text, lang = self._recognize(speech_samples)
+            if not text or len(text.replace(" ", "")) < 2:
+                continue
+
+            self._segment_counter += 1
+            duration_ms = int(len(speech_samples) / SAMPLE_RATE * 1000)
+            results.append(TranscriptChunk(
+                segment_id=f"seg-{self._segment_counter}",
+                source_text=text,
+                started_at_ms=base_time_ms,
+                ended_at_ms=base_time_ms + duration_ms,
+                confidence=0.0,
+                detected_lang=lang,
+            ))
+        return results
+
+    def feed_audio(self, samples: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        if samples.size == 0:
+            return []
+
+        self._vad_buf = np.concatenate([self._vad_buf, samples.reshape(-1)])
+
         while len(self._vad_buf) >= self.vad_window:
             chunk = self._vad_buf[:self.vad_window]
             self._vad_buf = self._vad_buf[self.vad_window:]
@@ -442,8 +665,19 @@ class SidecarApp:
         try:
             self.capture = AudioCapture(self.config.device_id, self.config.chunk_ms, self.config.output_device_id)
             self.capture.start()
-            emit({"type": "session_state", "state": "connecting", "detail": "Loading SenseVoice model..."})
-            self.transcriber = SenseVoiceTranscriber()
+            if self.config.stt_model == "whisper-tiny-en":
+                emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper tiny.en model..."})
+                self.transcriber = WhisperTinyEnTranscriber()
+            elif self.config.stt_model == "whisper-small":
+                lang = self.config.source_lang if self.config.source_lang != "auto" else ""
+                emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper small model..."})
+                self.transcriber = WhisperSmallTranscriber(language=lang)
+            elif self.config.stt_model == "zipformer-ko":
+                emit({"type": "session_state", "state": "connecting", "detail": "Loading Zipformer Korean model..."})
+                self.transcriber = ZipformerKoreanTranscriber()
+            else:
+                emit({"type": "session_state", "state": "connecting", "detail": "Loading SenseVoice model..."})
+                self.transcriber = SenseVoiceTranscriber()
             if self.config.translate_model in {"disabled", "off", "none"}:
                 self.translator = None
             else:
@@ -477,11 +711,7 @@ class SidecarApp:
             emit({"type": "session_state", "state": "stopped"})
 
     def _should_translate(self, chunk: TranscriptChunk) -> bool:
-        if self.translator is None or self.config is None:
-            return False
-        detected = chunk.detected_lang.lower().split("-")[0]
-        target = self.config.target_lang.lower().split("-")[0]
-        return detected != target
+        return self.translator is not None and self.config is not None
 
     def _convert_s2t(self, text: str) -> str:
         return self.opencc_s2t.convert(text)
