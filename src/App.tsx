@@ -247,38 +247,40 @@ function SettingsView({
       </header>
 
       <section className="settings-grid">
-        {(!(localModelStatus?.sensevoice && localModelStatus?.whisperTinyEn && localModelStatus?.whisperSmall && localModelStatus?.zipformerKo && localModelStatus?.vad)) && (
-          <article className="panel model-panel">
-            <h2>Models</h2>
-            <p className="model-hint">部分模型尚未下載，點擊下方按鈕下載</p>
-            <div className="model-status-row">
-              <span className={localModelStatus?.sensevoice ? 'model-ok' : 'model-missing'}>
-                SenseVoice {localModelStatus?.sensevoice ? '✓' : '✗'}
-              </span>
-              <span className={localModelStatus?.whisperTinyEn ? 'model-ok' : 'model-missing'}>
-                Whisper tiny.en {localModelStatus?.whisperTinyEn ? '✓' : '✗'}
-              </span>
-              <span className={localModelStatus?.whisperSmall ? 'model-ok' : 'model-missing'}>
-                Whisper small {localModelStatus?.whisperSmall ? '✓' : '✗'}
-              </span>
-              <span className={localModelStatus?.zipformerKo ? 'model-ok' : 'model-missing'}>
-                Zipformer Ko {localModelStatus?.zipformerKo ? '✓' : '✗'}
-              </span>
-              <span className={localModelStatus?.vad ? 'model-ok' : 'model-missing'}>
-                VAD {localModelStatus?.vad ? '✓' : '✗'}
-              </span>
-            </div>
-            {isDownloading && downloadProgress && (
-              <div className="progress-bar-container">
-                <div className="progress-bar-fill" style={{ width: `${downloadProgress.percent}%` }} />
+        <article className="panel model-panel">
+          <h2>Models</h2>
+          <div className="model-status-row">
+            {([
+              { key: 'sensevoice', label: 'SenseVoice', ready: localModelStatus?.sensevoice },
+              { key: 'whisper-tiny-en', label: 'Whisper tiny.en', ready: localModelStatus?.whisperTinyEn },
+              { key: 'whisper-small', label: 'Whisper small', ready: localModelStatus?.whisperSmall },
+              { key: 'zipformer-ko', label: 'Zipformer Ko', ready: localModelStatus?.zipformerKo },
+              { key: 'vad', label: 'VAD', ready: localModelStatus?.vad },
+            ] as const).map(({ key, label, ready }) => (
+              <div key={key} className="model-row">
+                <span className={ready ? 'model-ok' : 'model-missing'}>
+                  {ready ? '✓' : '✗'} {label}
+                </span>
+                {!ready && (
+                  <button
+                    className="secondary"
+                    disabled={isDownloading}
+                    onClick={() => window.app.downloadModel(key)}
+                  >
+                    下載
+                  </button>
+                )}
               </div>
-            )}
-            <button disabled={isDownloading} onClick={() => window.app.downloadModels()}>
-              {getDownloadLabel(downloadProgress)}
-            </button>
-            {downloadError && <p className="error-text">{downloadError}</p>}
-          </article>
-        )}
+            ))}
+          </div>
+          {isDownloading && downloadProgress && (
+            <div className="progress-bar-container">
+              <div className="progress-bar-fill" style={{ width: `${downloadProgress.percent}%` }} />
+            </div>
+          )}
+          {isDownloading && <p className="model-hint">{getDownloadLabel(downloadProgress)}</p>}
+          {downloadError && <p className="error-text">{downloadError}</p>}
+        </article>
 
         <article className="panel">
           <h2>Session</h2>

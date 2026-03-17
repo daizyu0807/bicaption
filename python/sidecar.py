@@ -25,11 +25,12 @@ CHANNELS = 1
 TRANSLATION_BATCH_WINDOW_MS = 220
 SHORT_SEGMENT_WORDS = 4
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SENSEVOICE_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17")
-WHISPER_TINY_EN_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-whisper-tiny.en")
-WHISPER_SMALL_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-whisper-small")
-ZIPFORMER_KOREAN_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-zipformer-korean-2024-06-24")
-SILERO_VAD_MODEL = os.path.join(SCRIPT_DIR, "silero_vad.onnx")
+MODEL_BASE_DIR = os.environ.get("BICAPTION_MODEL_DIR", SCRIPT_DIR)
+SENSEVOICE_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17")
+WHISPER_TINY_EN_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-whisper-tiny.en")
+WHISPER_SMALL_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-whisper-small")
+ZIPFORMER_KOREAN_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-zipformer-korean-2024-06-24")
+SILERO_VAD_MODEL = os.path.join(MODEL_BASE_DIR, "silero_vad.onnx")
 APPLE_STT_BIN = os.path.join(SCRIPT_DIR, "apple-stt")
 
 
@@ -237,7 +238,7 @@ class AudioCapture:
         self.output_device_index: int | None = None
         if output_device_id and output_device_id not in {"", "none", "disabled"}:
             self.output_device_index = resolve_device(output_device_id, require_input=True)
-        self.chunk_ms = max(400, chunk_ms)
+        self.chunk_ms = max(200, chunk_ms)
         self.queue: queue.Queue[np.ndarray] = queue.Queue()
         self.output_queue: queue.Queue[np.ndarray] = queue.Queue()
         self.level = 0.0
@@ -255,7 +256,10 @@ class AudioCapture:
         return callback
 
     def start(self) -> None:
-        blocksize = max(512, int(SAMPLE_RATE * self.chunk_ms / 4000))
+        # Use a small fixed blocksize for low-latency audio callbacks.
+        # Previously tied to chunk_ms, but that created 200ms+ buffers.
+        # 1024 samples = 64ms at 16kHz — matches Apple's recommended tap size.
+        blocksize = 1024
         self.stream = sd.InputStream(
             samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32",
             device=self.device_index, callback=self._make_callback(self.queue, is_primary=True),
@@ -626,6 +630,16 @@ class AppleSttTranscriber:
         "hi": "hi-IN", "auto": "en-US",
     }
 
+    # Minimum word count before a delta can be promoted to final.
+    MIN_PROMOTE_WORDS = 7
+    # Short deltas (below MIN_PROMOTE_WORDS) wait this long instead.
+    SHORT_DELTA_STABLE_MS = 900
+    # Sentence-ending punctuation triggers immediate promote regardless of
+    # word count (the speaker finished a thought).
+    SENTENCE_END_RE = re.compile(r'[.!?。！？]$')
+    # Number of recent promoted texts to keep for deduplication.
+    DEDUP_HISTORY = 10
+
     def __init__(self, source_lang: str = "en", partial_stable_ms: int = 600) -> None:
         self.partial_stable_ms = partial_stable_ms
         self.locale = self.LOCALE_MAP.get(source_lang, source_lang)
@@ -637,11 +651,152 @@ class AppleSttTranscriber:
         self._reader_thread: threading.Thread | None = None
         self._last_partial_text = ""
         self._last_partial_change_ms = 0
-        # Track how many characters of cumulative text have been promoted.
-        # Using length offset instead of prefix string matching because
-        # SFSpeechRecognizer retroactively edits earlier text (punctuation,
-        # word corrections), which breaks startswith() comparisons.
+        # Promote offset — advances when chunks are promoted for save/translate.
         self._promoted_len = 0
+        self._promoted_text = ""
+        # Display offset — only resets on 55s task restart.  Keeps the
+        # overlay showing continuous text independent of promote cycles.
+        self._display_offset = 0
+        self._display_offset_text = ""
+        # Recent promoted texts for deduplication (prevents re-emitting
+        # already-promoted content when offset calculation drifts).
+        self._recent_promoted: list[str] = []
+
+    def _find_promoted_offset(self, cumulative: str, for_display: bool = False) -> int:
+        """Find where new (unpromoted) text begins in the cumulative string.
+
+        Apple's SFSpeechRecognizer retroactively edits earlier text (adding
+        punctuation, correcting words), so a simple character offset drifts.
+        We try the stored offset first, then fall back to finding the last
+        few words of the promoted text in the cumulative string.
+
+        The returned offset is always snapped to a word boundary (the next
+        space character) so that delta text never starts mid-word.
+
+        for_display: when True (overlay partial), prefer returning 0 on
+            failure (show everything) rather than clamped offset (show nothing).
+            For promote-to-final, we prefer the clamped offset to avoid
+            duplicating already-promoted text.
+        """
+        if self._promoted_len == 0:
+            return 0
+
+        # If cumulative is much shorter than what we promoted, Apple likely
+        # restarted its recognition task and the final event hasn't arrived
+        # yet.  Treat this as a fresh start — show everything.
+        if len(cumulative) < self._promoted_len * 0.5:
+            return 0
+
+        raw_offset = -1
+
+        # Fast path: offset still valid (cumulative text wasn't retroactively edited)
+        if self._promoted_len <= len(cumulative):
+            prefix = cumulative[:self._promoted_len]
+            if self._promoted_text and prefix.rstrip().endswith(self._promoted_text.rstrip()[-8:]):
+                raw_offset = self._promoted_len
+
+        # Slow path: find the last few words of promoted text in cumulative
+        if raw_offset < 0 and self._promoted_text:
+            words = self._promoted_text.rstrip().split()
+            for anchor_len in (3, 2, 1):
+                if len(words) < anchor_len:
+                    continue
+                anchor = " ".join(words[-anchor_len:])
+                idx = cumulative.rfind(anchor)
+                if idx >= 0:
+                    raw_offset = idx + len(anchor)
+                    break
+
+        if raw_offset < 0:
+            # Anchor not found — promoted text was heavily rewritten.
+            if for_display:
+                return 0
+            return min(self._promoted_len, len(cumulative))
+
+        # Snap to word boundary: if we landed mid-word, scan forward to
+        # the next whitespace so delta never starts with a partial word
+        # like "rst" or "ersation".
+        if raw_offset < len(cumulative) and raw_offset > 0 and cumulative[raw_offset - 1] != ' ':
+            # Check if the character at offset is not a space — we're mid-word
+            if cumulative[raw_offset] not in (' ', ',', '.', '!', '?'):
+                next_space = cumulative.find(' ', raw_offset)
+                if next_space >= 0:
+                    raw_offset = next_space + 1
+                else:
+                    raw_offset = len(cumulative)
+
+        return raw_offset
+
+    @staticmethod
+    def _find_promoted_offset_with(cumulative: str, stored_offset: int, stored_text: str) -> int | None:
+        """Re-align a stored offset against a (possibly edited) cumulative string.
+
+        Returns the corrected offset, or None if alignment fails completely.
+        """
+        if stored_offset == 0:
+            return 0
+        if len(cumulative) < stored_offset * 0.5:
+            return 0
+        # Fast check
+        if stored_offset <= len(cumulative):
+            prefix = cumulative[:stored_offset]
+            if stored_text and prefix.rstrip().endswith(stored_text.rstrip()[-8:]):
+                return stored_offset
+        # Anchor search
+        if stored_text:
+            words = stored_text.rstrip().split()
+            for anchor_len in (3, 2, 1):
+                if len(words) < anchor_len:
+                    continue
+                anchor = " ".join(words[-anchor_len:])
+                idx = cumulative.rfind(anchor)
+                if idx >= 0:
+                    off = idx + len(anchor)
+                    # Snap to word boundary
+                    if off < len(cumulative) and off > 0 and cumulative[off - 1] != ' ':
+                        if cumulative[off] not in (' ', ',', '.', '!', '?'):
+                            ns = cumulative.find(' ', off)
+                            off = ns + 1 if ns >= 0 else len(cumulative)
+                    return off
+        return None
+
+    def _is_duplicate(self, text: str) -> bool:
+        """Check if text substantially overlaps with recently promoted chunks."""
+        if not self._recent_promoted:
+            return False
+        new_words = set(normalize_text(text).lower().split())
+        if not new_words:
+            return False
+        for prev in self._recent_promoted:
+            prev_words = set(normalize_text(prev).lower().split())
+            if not prev_words:
+                continue
+            overlap = len(new_words & prev_words)
+            # If >60% of the new text's words already appeared in a recent
+            # promoted chunk, treat it as a duplicate.
+            if overlap / len(new_words) > 0.6:
+                return True
+        return False
+
+    def _record_promoted(self, text: str) -> None:
+        """Record promoted text for deduplication."""
+        self._recent_promoted.append(text)
+        if len(self._recent_promoted) > self.DEDUP_HISTORY:
+            self._recent_promoted.pop(0)
+
+    @staticmethod
+    def _clean_leading_fragment(delta: str) -> str:
+        """Strip leading punctuation or partial-word fragments from delta.
+
+        After word-boundary snapping, the main remaining issue is leading
+        punctuation like ", but it's actually" — strip leading commas/periods
+        that clearly belong to the previous promoted chunk.
+        """
+        if not delta:
+            return delta
+        # Strip leading punctuation + whitespace (e.g. ", but..." → "but...")
+        cleaned = delta.lstrip(' ,;:')
+        return cleaned if cleaned else delta
 
     def start(self) -> None:
         if not os.path.isfile(APPLE_STT_BIN):
@@ -731,8 +886,9 @@ class AppleSttTranscriber:
                 # cumulative text which we've already promoted in pieces.
                 # Instead, force-promote any remaining unstable partial delta.
                 if self._last_partial_text:
-                    delta = self._last_partial_text[self._promoted_len:].lstrip()
-                    if delta and len(delta.replace(" ", "")) >= 2:
+                    offset = self._find_promoted_offset(self._last_partial_text, for_display=False)
+                    delta = self._clean_leading_fragment(self._last_partial_text[offset:].lstrip())
+                    if delta and len(delta.replace(" ", "")) >= 2 and not self._is_duplicate(delta):
                         self._segment_counter += 1
                         seg_id = f"apple-seg-{self._segment_counter}"
                         results.append(TranscriptChunk(
@@ -743,8 +899,14 @@ class AppleSttTranscriber:
                             confidence=float(event.get("confidence", 0.0)),
                             detected_lang=self.detected_lang,
                         ))
-                # Reset for new recognition task
+                        self._record_promoted(delta)
+                # Reset for new recognition task (also clear dedup history
+                # since the new task starts fresh cumulative text).
                 self._promoted_len = 0
+                self._promoted_text = ""
+                self._display_offset = 0
+                self._display_offset_text = ""
+                self._recent_promoted.clear()
                 self._last_partial_text = ""
                 self._last_partial_change_ms = 0
                 # Discard any partials from the OLD task that were queued
@@ -763,14 +925,21 @@ class AppleSttTranscriber:
         # Track partial text changes for stabilization.
         # SFSpeechRecognizer partials are cumulative — each partial contains
         # the full text from the start of the recognition task.
-        # We show only the NEW portion (beyond _promoted_len characters)
-        # as the streaming partial in the overlay.
         if latest_partial_text:
             if latest_partial_text != self._last_partial_text:
                 self._last_partial_text = latest_partial_text
                 self._last_partial_change_ms = now_ms()
-            # Show only the delta (new text beyond what we already finalized)
-            delta = latest_partial_text[self._promoted_len:].lstrip()
+            # Overlay uses _display_offset (not _promoted_len) so that promote
+            # cycles don't cause the visible text to vanish.  Display offset
+            # only resets on 55s task restart.
+            display_off = self._display_offset
+            if self._display_offset_text:
+                # Re-align display offset if Apple retroactively edited text
+                tmp = self._find_promoted_offset_with(
+                    latest_partial_text, self._display_offset, self._display_offset_text)
+                if tmp is not None:
+                    display_off = tmp
+            delta = self._clean_leading_fragment(latest_partial_text[display_off:].lstrip())
             if delta:
                 next_id = f"apple-seg-{self._segment_counter + 1}"
                 emit({
@@ -782,28 +951,54 @@ class AppleSttTranscriber:
                 })
 
         # Promote stable partial → final for translation.
-        # Extract only the NEW text beyond the already-promoted length.
         if (
             self._last_partial_text
             and self._last_partial_change_ms > 0
-            and (now_ms() - self._last_partial_change_ms) >= self.partial_stable_ms
         ):
             full_text = self._last_partial_text
-            delta = full_text[self._promoted_len:].lstrip()
-            if delta and len(delta.replace(" ", "")) >= 2:
-                self._segment_counter += 1
-                seg_id = f"apple-seg-{self._segment_counter}"
-                results.append(TranscriptChunk(
-                    segment_id=seg_id,
-                    source_text=delta,
-                    started_at_ms=base_time_ms,
-                    ended_at_ms=now_ms(),
-                    confidence=0.0,
-                    detected_lang=self.detected_lang,
-                ))
-            self._promoted_len = len(full_text)
-            self._last_partial_text = ""
-            self._last_partial_change_ms = 0
+            offset = self._find_promoted_offset(full_text, for_display=False)
+            delta = full_text[offset:].lstrip()
+            delta = self._clean_leading_fragment(delta)
+            delta_words = count_words(delta) if delta else 0
+            stable_ms = now_ms() - self._last_partial_change_ms
+
+            # Determine if we should promote now.
+            # Three conditions can trigger promotion:
+            # 1. Enough words (≥MIN_PROMOTE_WORDS) and stable long enough
+            # 2. Sentence boundary detected (period/question mark) and stable
+            # 3. Short fragment waited extra long (SHORT_DELTA_STABLE_MS)
+            has_sentence_end = bool(self.SENTENCE_END_RE.search(delta)) if delta else False
+            enough_words = delta_words >= self.MIN_PROMOTE_WORDS
+
+            should_promote = False
+            if enough_words and stable_ms >= self.partial_stable_ms:
+                should_promote = True
+            elif has_sentence_end and delta_words >= 2 and stable_ms >= self.partial_stable_ms:
+                # Sentence boundary — promote even if below MIN_PROMOTE_WORDS
+                should_promote = True
+            elif stable_ms >= self.SHORT_DELTA_STABLE_MS and delta_words >= 1:
+                # Long silence fallback — promote whatever we have
+                should_promote = True
+
+            if should_promote and delta and len(delta.replace(" ", "")) >= 2:
+                if not self._is_duplicate(delta):
+                    self._segment_counter += 1
+                    seg_id = f"apple-seg-{self._segment_counter}"
+                    results.append(TranscriptChunk(
+                        segment_id=seg_id,
+                        source_text=delta,
+                        started_at_ms=base_time_ms,
+                        ended_at_ms=now_ms(),
+                        confidence=0.0,
+                        detected_lang=self.detected_lang,
+                    ))
+                    self._record_promoted(delta)
+                self._promoted_len = len(full_text)
+                self._promoted_text = full_text
+                self._display_offset = len(full_text)
+                self._display_offset_text = full_text
+                self._last_partial_text = ""
+                self._last_partial_change_ms = 0
 
         return results
 
@@ -858,8 +1053,8 @@ class SidecarApp:
             target_lang=str(payload.get("targetLang", "zh-TW")),
             stt_model=str(payload.get("sttModel", "sensevoice")),
             translate_model=str(payload.get("translateModel", "google")),
-            chunk_ms=int(payload.get("chunkMs", 800)),
-            partial_stable_ms=int(payload.get("partialStableMs", 600)),
+            chunk_ms=int(payload.get("chunkMs", 400)),
+            partial_stable_ms=int(payload.get("partialStableMs", 500)),
         )
         self.stop_event.clear()
         self.active = True
@@ -970,7 +1165,7 @@ class SidecarApp:
         total_samples_fed = 0
 
         while not self.stop_event.is_set():
-            time.sleep(0.05)  # 50ms poll interval
+            time.sleep(0.025)  # 25ms poll interval for lower latency
             incoming = self.capture.drain()
 
             emit({
@@ -1063,10 +1258,25 @@ class SidecarApp:
                 emit({"type": "error", "code": "translation_failed", "message": str(error), "recoverable": True})
 
 
+def _apply_model_dir(model_dir: str) -> None:
+    global MODEL_BASE_DIR, SENSEVOICE_MODEL_DIR, WHISPER_TINY_EN_MODEL_DIR
+    global WHISPER_SMALL_MODEL_DIR, ZIPFORMER_KOREAN_MODEL_DIR, SILERO_VAD_MODEL
+    MODEL_BASE_DIR = model_dir
+    SENSEVOICE_MODEL_DIR = os.path.join(model_dir, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17")
+    WHISPER_TINY_EN_MODEL_DIR = os.path.join(model_dir, "sherpa-onnx-whisper-tiny.en")
+    WHISPER_SMALL_MODEL_DIR = os.path.join(model_dir, "sherpa-onnx-whisper-small")
+    ZIPFORMER_KOREAN_MODEL_DIR = os.path.join(model_dir, "sherpa-onnx-zipformer-korean-2024-06-24")
+    SILERO_VAD_MODEL = os.path.join(model_dir, "silero_vad.onnx")
+
+
 def cli() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--list-devices", action="store_true")
+    parser.add_argument("--model-dir", type=str, default=None)
     args = parser.parse_args()
+
+    if args.model_dir:
+        _apply_model_dir(args.model_dir)
 
     if args.list_devices:
         sys.stdout.write(json.dumps(list_audio_devices(), ensure_ascii=False) + "\n")

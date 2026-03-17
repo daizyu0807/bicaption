@@ -23,5 +23,6 @@ contextBridge.exposeInMainWorld('app', {
   openSaveDirectory: () => ipcRenderer.invoke('save:open-directory'),
   checkModels: () => ipcRenderer.invoke('models:check'),
   downloadModels: () => ipcRenderer.invoke('models:download'),
+  downloadModel: (modelKey) => ipcRenderer.invoke('models:download-one', modelKey),
   subscribe: (eventName, handler) => on(eventName, handler),
 });

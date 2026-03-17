@@ -41,9 +41,13 @@ export class ModelDownloader extends EventEmitter {
   private pythonDir: string;
   private aborted = false;
 
-  constructor(projectRoot: string) {
+  /**
+   * @param modelDir - Directory where models are stored.
+   *   In dev: projectRoot/python. In production: userData/models.
+   */
+  constructor(modelDir: string) {
     super();
-    this.pythonDir = join(projectRoot, 'python');
+    this.pythonDir = modelDir;
   }
 
   checkStatus(): ModelStatus {
@@ -57,6 +61,36 @@ export class ModelDownloader extends EventEmitter {
 
   abort() {
     this.aborted = true;
+  }
+
+  private static readonly MODEL_MAP: Record<string, { dir?: string; file?: string; url: string; stage: 'sensevoice' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad'; isArchive: boolean }> = {
+    sensevoice: { dir: SENSEVOICE_MODEL_DIR, url: SENSEVOICE_ARCHIVE_URL, stage: 'sensevoice', isArchive: true },
+    'whisper-tiny-en': { dir: WHISPER_TINY_EN_MODEL_DIR, url: WHISPER_TINY_EN_ARCHIVE_URL, stage: 'whisper-tiny-en', isArchive: true },
+    'whisper-small': { dir: WHISPER_SMALL_MODEL_DIR, url: WHISPER_SMALL_ARCHIVE_URL, stage: 'whisper-small', isArchive: true },
+    'zipformer-ko': { dir: ZIPFORMER_KOREAN_MODEL_DIR, url: ZIPFORMER_KOREAN_ARCHIVE_URL, stage: 'zipformer-ko', isArchive: true },
+    vad: { file: VAD_MODEL_FILE, url: VAD_MODEL_URL, stage: 'vad', isArchive: false },
+  };
+
+  async downloadOne(modelKey: string): Promise<void> {
+    this.aborted = false;
+    const entry = ModelDownloader.MODEL_MAP[modelKey];
+    if (!entry) throw new Error(`Unknown model: ${modelKey}`);
+
+    if (entry.isArchive) {
+      const archiveName = `${modelKey}.tar.bz2`;
+      const archivePath = join(this.pythonDir, archiveName);
+      await this.downloadFile(entry.url, archivePath, entry.stage);
+      if (this.aborted) return;
+      this.emitProgress({ stage: 'extracting', percent: 0, downloadedMB: 0, totalMB: 0 });
+      await this.extractTarBz2(archivePath, this.pythonDir);
+      try { rmSync(archivePath); } catch {}
+    } else {
+      await this.downloadFile(entry.url, join(this.pythonDir, entry.file!), entry.stage);
+    }
+
+    if (!this.aborted) {
+      this.emit('done', this.checkStatus());
+    }
   }
 
   async downloadAll(): Promise<void> {

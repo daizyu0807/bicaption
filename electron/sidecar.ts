@@ -5,12 +5,9 @@ import { createInterface } from 'node:readline';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CaptionConfig, SidecarEvent } from './types.js';
+import { getSidecarCommand, getModelDir, getSpawnCwd } from './paths.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(__dirname, '../..');
-const sidecarPath = join(projectRoot, 'python', 'sidecar.py');
-const venvPython = join(projectRoot, '.venv', 'bin', 'python');
-const pythonBin = existsSync(venvPython) ? venvPython : 'python3';
 const ignoredStderrPatterns = [
   'Disabling PyTorch because PyTorch >= 2.4 is required but found 2.2.2',
   'PyTorch was not found. Models won\'t be available',
@@ -35,14 +32,16 @@ export class SidecarBridge extends EventEmitter {
       return;
     }
 
-    const child = spawn('/usr/bin/arch', ['-arm64', pythonBin, sidecarPath], {
-      cwd: projectRoot,
+    const { command, args: spawnArgs } = getSidecarCommand();
+    const child = spawn(command, spawnArgs, {
+      cwd: getSpawnCwd(),
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1',
         USE_TORCH: '0',
         KMP_WARNINGS: '0',
         MKL_VERBOSE: '0',
+        BICAPTION_MODEL_DIR: getModelDir(),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

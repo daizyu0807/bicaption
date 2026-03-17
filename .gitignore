@@ -20,3 +20,7 @@ docs/
 task-plan.md
 findings.md
 progress.md
+release/
+python/dist/
+python/build/
+python/build/*.spec

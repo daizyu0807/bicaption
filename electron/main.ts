@@ -6,16 +6,17 @@ import { fileURLToPath } from 'node:url';
 import { SidecarBridge } from './sidecar.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
+import { getSidecarCommand, getModelDir, getSpawnCwd } from './paths.js';
 import type { AppSettings, CaptionConfig, ModelDownloadProgress, OverlayBounds, SidecarEvent } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const isPackaged = app.isPackaged;
 const rendererEntry = process.env.VITE_DEV_SERVER_URL ?? `file://${join(__dirname, '../renderer/index.html')}`;
 const projectRoot = join(__dirname, '../..');
-const preloadPath = join(projectRoot, 'electron', 'preload.cjs');
-const sidecarScript = join(projectRoot, 'python', 'sidecar.py');
-const venvPython = join(projectRoot, '.venv', 'bin', 'python');
-const pythonBin = existsSync(venvPython) ? venvPython : 'python3';
+const preloadPath = isPackaged
+  ? join(app.getAppPath(), 'electron', 'preload.cjs')
+  : join(projectRoot, 'electron', 'preload.cjs');
 
 let settingsWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
@@ -24,7 +25,7 @@ let saveFilePath: string | null = null;
 let isQuitting = false;
 
 const bridge = new SidecarBridge();
-const modelDownloader = new ModelDownloader(projectRoot);
+const modelDownloader = new ModelDownloader(getModelDir());
 
 function formatSaveFilename(date: Date): string {
   const yy = String(date.getFullYear()).slice(2);
@@ -94,9 +95,9 @@ function setOverlayVisible(visible: boolean) {
 
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
-    width: 360,
-    height: 720,
-    minHeight: 500,
+    width: 380,
+    height: 820,
+    minHeight: 600,
     title: 'BiCaption',
     webPreferences: {
       preload: preloadPath,
@@ -210,7 +211,6 @@ async function ensureMicrophoneAccess() {
 app.whenReady().then(() => {
   createSettingsWindow();
   createOverlayWindow();
-  bindBridge();
 
   ipcMain.handle('settings:load', () => loadSettings());
   ipcMain.handle('settings:save', (_event, partial) => {
@@ -234,8 +234,9 @@ app.whenReady().then(() => {
       throw new Error('Microphone permission was denied. Allow microphone access in System Settings and restart the app.');
     }
 
-    const output = execFileSync('/usr/bin/arch', ['-arm64', pythonBin, sidecarScript, '--list-devices'], {
-      cwd: projectRoot,
+    const { command: sidecarCmd, args: sidecarArgs } = getSidecarCommand();
+    const output = execFileSync(sidecarCmd, [...sidecarArgs, '--list-devices'], {
+      cwd: getSpawnCwd(),
       encoding: 'utf-8',
     });
     const devices = JSON.parse(output) as Array<{ id: string; label: string; kind: string }>;
@@ -299,6 +300,12 @@ app.whenReady().then(() => {
     });
     return { ok: true };
   });
+  ipcMain.handle('models:download-one', (_event, modelKey: string) => {
+    modelDownloader.downloadOne(modelKey).catch((err: Error) => {
+      sendToWindows('models:error', err.message);
+    });
+    return { ok: true };
+  });
   modelDownloader.on('progress', (progress: ModelDownloadProgress) => {
     sendToWindows('models:progress', progress);
   });
@@ -319,6 +326,13 @@ app.whenReady().then(() => {
     overlayWindow?.hide();
     return { ok: true };
   });
+
+  // Start sidecar AFTER all IPC handlers are registered
+  try {
+    bindBridge();
+  } catch (err) {
+    console.error('Failed to start sidecar bridge:', err);
+  }
 });
 
 app.on('activate', () => {

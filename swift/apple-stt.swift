@@ -111,6 +111,7 @@ class SpeechEngine {
         if #available(macOS 13, *) {
             req.addsPunctuation = true
         }
+        req.taskHint = .dictation
 
         request = req
         taskStartMs = nowMs()

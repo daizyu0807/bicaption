@@ -27,6 +27,7 @@ declare global {
       openSaveDirectory(): Promise<{ ok: boolean }>;
       checkModels(): Promise<ModelStatus>;
       downloadModels(): Promise<{ ok: boolean }>;
+      downloadModel(modelKey: string): Promise<{ ok: boolean }>;
       subscribe<K extends keyof SubscribeMap>(
         eventName: K,
         handler: (payload: SubscribeMap[K]) => void,
