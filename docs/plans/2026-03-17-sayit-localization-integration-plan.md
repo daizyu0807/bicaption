@@ -70,6 +70,7 @@ sequenceDiagram
   - 新增單次語音輸入流程，不顯示字幕 overlay。
   - 使用者按下快捷鍵開始收音，放開時 finalize。
   - finalize 後依序執行 STT、文字修飾、copy/paste。
+  - 與 `subtitle mode` 採互斥模式，同一時間只能有一個 active session。
 
 ### Target Timing
 
@@ -119,7 +120,25 @@ sequenceDiagram
   - `rewriteBackend: 'rules' | 'local-llm' | 'hybrid'`
   - `autoEnterAfterPaste`
 - `dictation` 模式不顯示字幕 overlay，只顯示狀態提示或 toast。
+- 預設 `dictationHotkey` 為 `Cmd+Shift+Space`。
 - 若 `globalShortcut` 註冊失敗，UI 顯示錯誤並退回 app 內按住說話按鈕。
+- 自訂 hotkey 驗證規則：
+  - 不允許只有單一修飾鍵。
+  - 不允許空值。
+  - 若與目前已知系統快捷鍵衝突，顯示明確提示並拒絕保存。
+
+### macOS Permissions / Paste Fallback
+
+- `auto-paste` 依賴 macOS Accessibility 權限。
+- 首次開啟 `paste` 或 `copy-and-paste` 時，main process 先檢查 Accessibility 權限。
+- 若未授權：
+  - 顯示一次性引導，說明需到 `System Settings -> Privacy & Security -> Accessibility` 啟用 app。
+  - 本次輸出自動降級為 `copy`，不得靜默失敗。
+  - `dictation_final` 仍要完成並寫入 clipboard。
+- 若 paste 執行失敗：
+  - 不重試多次。
+  - 保留 clipboard 結果。
+  - 顯示 `Paste failed, text copied to clipboard` 類型提示。
 
 ### Main Process
 
@@ -133,6 +152,7 @@ sequenceDiagram
   - `dictation:status`
   - `dictation:test-hotkey`
 - settings 變更時即時重註冊 hotkey，不要求重啟。
+- `dictation` / `subtitle` 切換時，main process 需先停止舊 session，再啟動新 session，不允許並行存活。
 
 ### Sidecar / Audio Pipeline
 
@@ -148,6 +168,63 @@ sequenceDiagram
   - `local-llm`：可插拔本地 LLM provider
   - `hybrid`：先 `rules` 再 `local-llm`
 - 若 local LLM provider 不可用，回退 `rules` 並上報 warning。
+
+### Local LLM Provider Selection
+
+- V1 的 `local-llm` provider 介面固定為單次同步呼叫：`rewrite(text, locale, style) -> text`。
+- V1 先以 provider abstraction 落地，不把實際模型綁死在主流程；實作階段從下列候選中擇一：
+  - `MLX`：Apple Silicon 優先，安裝與部署較貼近本機 macOS 場景。
+  - `Ollama`：整合門檻低，但模型管理與背景服務依賴較重。
+  - `llama.cpp`：控制力高，但整合成本較高。
+- 選型硬約束：
+  - 模型大小以本機可接受範圍為主，預設目標小於 `4 GB`。
+  - 首次推理延遲目標小於 `2 s`。
+  - 10 秒語音對應的端到端輸出目標小於 `3 s`。
+- `local-llm` fallback 觸發條件：
+  - provider 未安裝
+  - 模型不存在
+  - 呼叫 timeout
+  - 執行期錯誤
+- 任一 fallback 觸發時，自動退回 `rules`，並送出 recoverable warning event。
+
+### Rewrite Rules Specification
+
+- `rules` V1 範圍只處理保守清理，不做語意改寫：
+  - 移除明顯語助詞與填充詞，如「呃」、「嗯」、「那個」
+  - 合併重複詞與重複短語
+  - 修正常見空白與標點
+  - 中文輸出可選簡轉繁
+  - 中英混排時保留英文大小寫與基本空白
+- 語言策略：
+  - 中文與中英混合：完整支援上述規則
+  - 英文：只做填充詞、重複詞、標點與空白清理
+  - 日文 / 韓文：僅做保守標點與空白清理，不做口語詞刪除
+
+### Error Handling & Edge Cases
+
+- STT 回傳空字串：
+  - 不執行 rewrite。
+  - 不觸發 paste。
+  - 顯示 `No speech detected` 類型提示。
+- 過短語音：
+  - 若錄音長度低於最小門檻，直接中止並顯示 `Speech too short`。
+- dictation 執行中切換模式：
+  - 先 stop 當前 session，再切換 UI 狀態。
+  - 不保留半成品 session。
+- sidecar crash：
+  - main process 顯示錯誤狀態。
+  - 下次觸發時允許重新啟動 sidecar。
+  - 不自動無限重連。
+- global hotkey 按下後極短時間放開：
+  - 視為無效輸入，不進行 STT。
+
+### Performance Budget
+
+- `keydown hotkey -> start recording` 應為即時，本地啟動延遲目標小於 `100 ms`。
+- `keyup hotkey -> transcript ready` 目標小於 `1.5 s`，以 10 秒語音為基準。
+- `keyup hotkey -> final output copied` 目標小於 `2 s`。
+- 啟用 `hybrid` 時，`keyup hotkey -> final output pasted` 目標小於 `3 s`。
+- 若 `local-llm` 使端到端延遲持續超標，產品預設應回退 `rules`。
 
 ### Public Interfaces
 
@@ -186,9 +263,14 @@ sequenceDiagram
 - `copy`、`paste`、`copy-and-paste` 三種輸出行為正確
 - hotkey 更新後能重註冊；失敗時 fallback 正常
 - `hybrid` 在 local LLM 不可用時能退回 `rules`
+- 切換 `subtitle` / `dictation` 時，不會殘留雙 session 或重複佔用麥克風
+- 未授予 Accessibility 權限時，`paste` 會自動降級為 `copy`
+- STT 空結果、過短語音、sidecar crash 都有明確 recoverable 行為
 
 ### Manual Verification
 
 - 在 Notes / TextEdit / ChatGPT Desktop 等前景 app 測試 paste
 - 驗證焦點切換、快捷鍵誤觸、快速連續觸發
 - 驗證 subtitle / dictation 模式切換後，overlay、session 狀態與 save log 不互相干擾
+- 驗證端到端延遲是否落在 `copy <= 2 s`、`paste <= 3 s` 的預算內
+- 驗證不同 macOS 版本下 global hotkey 與 Accessibility 權限流程
