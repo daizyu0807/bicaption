@@ -8,6 +8,7 @@ export interface CaptionConfig {
   sttModel: string;
   translateModel: string;
   chunkMs: number;
+  partialStableMs: number;
   beamSize: number;
   bestOf: number;
   vadFilter: boolean;
@@ -77,6 +78,7 @@ export interface AppSettings {
   sttModel: string;
   translateModel: string;
   chunkMs: number;
+  partialStableMs: number;
   beamSize: number;
   bestOf: number;
   vadFilter: boolean;

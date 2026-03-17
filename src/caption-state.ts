@@ -38,7 +38,12 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
           isFinal: false,
         },
       };
-    case 'final_caption':
+    case 'final_caption': {
+      // When the first final_caption arrives (translatedText=""), preserve
+      // any existing translation so subtitles don't flicker between the
+      // initial emit and the translation-worker emit.
+      const existing = state.captions.find((c) => c.segmentId === event.segmentId);
+      const translatedText = event.translatedText || existing?.translatedText || '';
       return {
         ...state,
         partial: state.partial?.segmentId === event.segmentId ? null : state.partial,
@@ -47,13 +52,14 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
           {
             segmentId: event.segmentId,
             sourceText: event.sourceText,
-            translatedText: event.translatedText,
+            translatedText,
             startedAtMs: event.startedAtMs,
             endedAtMs: event.endedAtMs,
             isFinal: true,
           },
         ],
       };
+    }
     case 'metrics':
       return {
         ...state,
@@ -66,6 +72,8 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
     case 'session_state':
       return {
         ...state,
+        // Clear captions when a new session starts
+        ...(event.state === 'connecting' ? { captions: [], partial: null } : {}),
         sessionState: event.state,
         lastError: event.state === 'error' ? event.detail ?? 'Unknown error' : state.lastError,
       };

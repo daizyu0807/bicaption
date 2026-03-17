@@ -18,11 +18,25 @@ function OverlayView({
   const shouldShowShell = hasVisibleCaptions || viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
   const translationEnabled = isTranslationEnabled(settings);
   const stackRef = useRef<HTMLElement | null>(null);
+  const userScrolledUp = useRef(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; winX: number; winY: number } | null>(null);
 
   useEffect(() => {
-    if (!stackRef.current) {
+    const el = stackRef.current;
+    if (!el) return;
+    function onScroll() {
+      if (!el) return;
+      // Consider "at bottom" if within 30px of the bottom
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+      userScrolledUp.current = !atBottom;
+    }
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!stackRef.current || userScrolledUp.current) {
       return;
     }
     stackRef.current.scrollTop = stackRef.current.scrollHeight;
@@ -131,7 +145,7 @@ function getSessionSummary(viewState: ReturnType<typeof useCaptionState>, settin
   if (viewState.sessionState === 'streaming') {
     const translation = isTranslationEnabled(settings) ? '雙語' : '單語';
     const audio = getInputHealthLabel(viewState);
-    const modelNames: Record<string, string> = { sensevoice: 'SenseVoice', 'whisper-tiny-en': 'Whisper tiny.en', 'whisper-small': 'Whisper small', 'zipformer-ko': 'Zipformer Ko' };
+    const modelNames: Record<string, string> = { sensevoice: 'SenseVoice', 'whisper-tiny-en': 'Whisper tiny.en', 'whisper-small': 'Whisper small', 'zipformer-ko': 'Zipformer Ko', 'apple-stt': 'Apple STT' };
     const model = modelNames[settings.sttModel] ?? settings.sttModel;
     return `${model}・${translation}・${audio}`;
   }
@@ -157,7 +171,7 @@ function getInputHealthLabel(viewState: ReturnType<typeof useCaptionState>) {
 function getDownloadLabel(progress: ModelDownloadProgress | null): string {
   if (!progress) return '下載模型';
   if (progress.stage === 'extracting') return '解壓縮中…';
-  const stageNames: Record<string, string> = { sensevoice: 'SenseVoice', 'whisper-tiny-en': 'Whisper tiny.en', 'whisper-small': 'Whisper small', 'zipformer-ko': 'Zipformer Korean', vad: 'VAD' };
+  const stageNames: Record<string, string> = { sensevoice: 'SenseVoice', 'whisper-tiny-en': 'Whisper tiny.en', 'whisper-small': 'Whisper small', 'zipformer-ko': 'Zipformer Korean', 'apple-stt': 'Apple STT', vad: 'VAD' };
   const name = stageNames[progress.stage] ?? progress.stage;
   if (progress.totalMB > 0) {
     return `下載 ${name}… ${progress.downloadedMB}/${progress.totalMB} MB (${progress.percent}%)`;
@@ -192,9 +206,10 @@ function SettingsView({
     'whisper-tiny-en': localModelStatus?.whisperTinyEn ?? false,
     'whisper-small': localModelStatus?.whisperSmall ?? false,
     'zipformer-ko': localModelStatus?.zipformerKo ?? false,
+    'apple-stt': true,  // No model download needed — uses macOS built-in
   };
   const selectedModelReady = modelReadyMap[draft.sttModel] ?? false;
-  const modelsReady = selectedModelReady && (localModelStatus?.vad ?? true);
+  const modelsReady = draft.sttModel === 'apple-stt' || (selectedModelReady && (localModelStatus?.vad ?? true));
   const isDownloading = downloadProgress !== null;
 
   useEffect(() => {
@@ -287,8 +302,15 @@ function SettingsView({
               <option value="whisper-tiny-en">Whisper tiny.en — 純英文，最快</option>
               <option value="whisper-small">Whisper small — 日文/多語言，較慢</option>
               <option value="zipformer-ko">Zipformer Korean — 韓文專用，最準</option>
+              <option value="apple-stt">Apple STT — 系統內建英文語音辨識</option>
             </select>
           </label>
+          {draft.sttModel === 'apple-stt' && (
+            <label>
+              翻譯觸發延遲（{draft.partialStableMs}ms）
+              <input type="range" min="200" max="2000" step="100" value={draft.partialStableMs} onChange={(event) => setDraft({ ...draft, partialStableMs: Number(event.target.value) })} />
+            </label>
+          )}
           <label>
             系統音訊（Loopback）
             <select value={draft.outputDeviceId} onChange={(event) => setDraft({ ...draft, outputDeviceId: event.target.value })}>
@@ -305,10 +327,15 @@ function SettingsView({
               Source lang
               <select value={draft.sourceLang} onChange={(event) => {
                 const lang = event.target.value;
-                const recommendedModel: Record<string, string> = {
-                  auto: 'sensevoice', zh: 'sensevoice', en: 'whisper-tiny-en', ja: 'whisper-small', ko: 'zipformer-ko',
-                };
-                setDraft({ ...draft, sourceLang: lang, sttModel: recommendedModel[lang] ?? 'sensevoice' });
+                // Don't auto-switch away from Apple STT when changing language
+                if (draft.sttModel === 'apple-stt') {
+                  setDraft({ ...draft, sourceLang: lang });
+                } else {
+                  const recommendedModel: Record<string, string> = {
+                    auto: 'sensevoice', zh: 'sensevoice', en: 'whisper-tiny-en', ja: 'whisper-small', ko: 'zipformer-ko',
+                  };
+                  setDraft({ ...draft, sourceLang: lang, sttModel: recommendedModel[lang] ?? 'sensevoice' });
+                }
               }}>
                 <option value="auto">自動偵測</option>
                 <option value="en">English</option>

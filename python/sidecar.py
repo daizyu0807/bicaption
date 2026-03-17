@@ -7,6 +7,7 @@ import math
 import os
 import queue
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -29,6 +30,7 @@ WHISPER_TINY_EN_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-whisper-tiny.e
 WHISPER_SMALL_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-whisper-small")
 ZIPFORMER_KOREAN_MODEL_DIR = os.path.join(SCRIPT_DIR, "sherpa-onnx-zipformer-korean-2024-06-24")
 SILERO_VAD_MODEL = os.path.join(SCRIPT_DIR, "silero_vad.onnx")
+APPLE_STT_BIN = os.path.join(SCRIPT_DIR, "apple-stt")
 
 
 def emit(event: dict[str, Any]) -> None:
@@ -154,7 +156,8 @@ class GoogleTranslationProvider(TranslationProvider):
                     translated = self.opencc.convert(translated)
                 self.cache[cache_key] = translated
                 return translated
-            except Exception:
+            except Exception as err:
+                print(f"[translate] attempt {attempt+1}/3 failed ({src}→{tgt_google}): {err}", file=sys.stderr)
                 if attempt < 2:
                     time.sleep(0.5 * (attempt + 1))
         return ""
@@ -193,8 +196,8 @@ class GoogleTranslationProvider(TranslationProvider):
                     cache_key = (normalized_items[index].lower(), source_lang, target_lang.lower())
                     self.cache[cache_key] = split_batch[offset]
                 return results
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"[translate_many] batch failed ({src}→{tgt_google}): {err}", file=sys.stderr)
 
         # Fallback: translate one by one
         for index in missing_indexes:
@@ -211,6 +214,7 @@ class SessionConfig:
     stt_model: str
     translate_model: str
     chunk_ms: int
+    partial_stable_ms: int
 
 
 @dataclass
@@ -606,6 +610,193 @@ class ZipformerKoreanTranscriber:
         return self._process_vad_queue(base_time_ms)
 
 
+class AppleSttTranscriber:
+    """Apple SFSpeechRecognizer via compiled Swift binary.
+
+    Receives PCM float32 16 kHz mono from AudioCapture via stdin,
+    outputs JSON lines on stdout matching the sidecar event protocol.
+    """
+
+    def __init__(self, partial_stable_ms: int = 600) -> None:
+        self.partial_stable_ms = partial_stable_ms
+        self.finalized_ids: set[str] = set()
+        self._segment_counter = 0
+        self._proc: subprocess.Popen | None = None
+        self._results: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._reader_thread: threading.Thread | None = None
+        self._last_partial_text = ""
+        self._last_partial_change_ms = 0
+        # Track how many characters of cumulative text have been promoted.
+        # Using length offset instead of prefix string matching because
+        # SFSpeechRecognizer retroactively edits earlier text (punctuation,
+        # word corrections), which breaks startswith() comparisons.
+        self._promoted_len = 0
+
+    def start(self) -> None:
+        if not os.path.isfile(APPLE_STT_BIN):
+            raise RuntimeError(
+                f"Apple STT binary not found at {APPLE_STT_BIN}. "
+                "Run: bash scripts/build-apple-stt.sh"
+            )
+        self._proc = subprocess.Popen(
+            [APPLE_STT_BIN],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+        self._reader_thread = threading.Thread(target=self._read_stdout, daemon=True)
+        self._reader_thread.start()
+        stderr_thread = threading.Thread(target=self._read_stderr, daemon=True)
+        stderr_thread.start()
+        # Wait for "ready" event (up to 5 seconds)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            try:
+                event = self._results.get(timeout=0.1)
+                if event.get("type") == "ready":
+                    break
+                # Put non-ready events back
+                self._results.put(event)
+            except queue.Empty:
+                continue
+
+    def stop(self) -> None:
+        proc = self._proc
+        self._proc = None
+        if proc and proc.poll() is None:
+            # Close stdin to signal EOF, then terminate
+            if proc.stdin:
+                try:
+                    proc.stdin.close()
+                except OSError:
+                    pass
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    def _read_stdout(self) -> None:
+        assert self._proc is not None and self._proc.stdout is not None
+        for raw_line in self._proc.stdout:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+                self._results.put(event)
+            except json.JSONDecodeError:
+                pass
+
+    def _read_stderr(self) -> None:
+        assert self._proc is not None and self._proc.stderr is not None
+        for raw_line in self._proc.stderr:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if line:
+                emit({"type": "error", "code": "apple_stt_stderr", "message": line, "recoverable": True})
+
+    def feed_audio(self, samples: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        """Feed PCM float32 audio to the binary's stdin and drain results."""
+        if self._proc is not None and self._proc.stdin is not None and samples.size > 0:
+            try:
+                self._proc.stdin.write(samples.astype(np.float32).tobytes())
+                self._proc.stdin.flush()
+            except (OSError, BrokenPipeError):
+                emit({"type": "error", "code": "apple_stt_pipe", "message": "Apple STT stdin pipe broken", "recoverable": False})
+
+        # Drain results from stdout reader
+        results: list[TranscriptChunk] = []
+        latest_partial_text = ""
+        while True:
+            try:
+                event = self._results.get_nowait()
+            except queue.Empty:
+                break
+            event_type = event.get("type", "")
+            if event_type == "final":
+                # Binary restarted its recognition task (55s limit).
+                # Don't use the binary's final text directly — it's the full
+                # cumulative text which we've already promoted in pieces.
+                # Instead, force-promote any remaining unstable partial delta.
+                if self._last_partial_text:
+                    delta = self._last_partial_text[self._promoted_len:].lstrip()
+                    if delta and len(delta.replace(" ", "")) >= 2:
+                        self._segment_counter += 1
+                        seg_id = f"apple-seg-{self._segment_counter}"
+                        results.append(TranscriptChunk(
+                            segment_id=seg_id,
+                            source_text=delta,
+                            started_at_ms=base_time_ms,
+                            ended_at_ms=now_ms(),
+                            confidence=float(event.get("confidence", 0.0)),
+                            detected_lang="en",
+                        ))
+                # Reset for new recognition task
+                self._promoted_len = 0
+                self._last_partial_text = ""
+                self._last_partial_change_ms = 0
+                # Discard any partials from the OLD task that were queued
+                # before this final — they'd replay with _promoted_len=0.
+                latest_partial_text = ""
+            elif event_type == "partial":
+                latest_partial_text = normalize_text(event.get("text", ""))
+            elif event_type == "error":
+                emit({
+                    "type": "error",
+                    "code": event.get("code", "apple_stt_error"),
+                    "message": event.get("message", "Unknown Apple STT error"),
+                    "recoverable": event.get("recoverable", True),
+                })
+
+        # Track partial text changes for stabilization.
+        # SFSpeechRecognizer partials are cumulative — each partial contains
+        # the full text from the start of the recognition task.
+        # We show only the NEW portion (beyond _promoted_len characters)
+        # as the streaming partial in the overlay.
+        if latest_partial_text:
+            if latest_partial_text != self._last_partial_text:
+                self._last_partial_text = latest_partial_text
+                self._last_partial_change_ms = now_ms()
+            # Show only the delta (new text beyond what we already finalized)
+            delta = latest_partial_text[self._promoted_len:].lstrip()
+            if delta:
+                next_id = f"apple-seg-{self._segment_counter + 1}"
+                emit({
+                    "type": "partial_caption",
+                    "segmentId": next_id,
+                    "sourceText": delta,
+                    "startedAtMs": base_time_ms,
+                    "updatedAtMs": now_ms(),
+                })
+
+        # Promote stable partial → final for translation.
+        # Extract only the NEW text beyond the already-promoted length.
+        if (
+            self._last_partial_text
+            and self._last_partial_change_ms > 0
+            and (now_ms() - self._last_partial_change_ms) >= self.partial_stable_ms
+        ):
+            full_text = self._last_partial_text
+            delta = full_text[self._promoted_len:].lstrip()
+            if delta and len(delta.replace(" ", "")) >= 2:
+                self._segment_counter += 1
+                seg_id = f"apple-seg-{self._segment_counter}"
+                results.append(TranscriptChunk(
+                    segment_id=seg_id,
+                    source_text=delta,
+                    started_at_ms=base_time_ms,
+                    ended_at_ms=now_ms(),
+                    confidence=0.0,
+                    detected_lang="en",
+                ))
+            self._promoted_len = len(full_text)
+            self._last_partial_text = ""
+            self._last_partial_change_ms = 0
+
+        return results
+
+
 class SidecarApp:
     def __init__(self) -> None:
         self.active = False
@@ -613,7 +804,7 @@ class SidecarApp:
         self.stop_event = threading.Event()
         self.config: SessionConfig | None = None
         self.capture: AudioCapture | None = None
-        self.transcriber: SenseVoiceTranscriber | None = None
+        self.transcriber: SenseVoiceTranscriber | WhisperTinyEnTranscriber | WhisperSmallTranscriber | ZipformerKoreanTranscriber | AppleSttTranscriber | None = None
         self.translator: TranslationProvider | None = None
         self.opencc_s2t = OpenCC("s2t")
         self.translation_queue: queue.Queue[tuple[TranscriptChunk, SessionConfig]] = queue.Queue()
@@ -657,6 +848,7 @@ class SidecarApp:
             stt_model=str(payload.get("sttModel", "sensevoice")),
             translate_model=str(payload.get("translateModel", "google")),
             chunk_ms=int(payload.get("chunkMs", 800)),
+            partial_stable_ms=int(payload.get("partialStableMs", 600)),
         )
         self.stop_event.clear()
         self.active = True
@@ -665,7 +857,12 @@ class SidecarApp:
         try:
             self.capture = AudioCapture(self.config.device_id, self.config.chunk_ms, self.config.output_device_id)
             self.capture.start()
-            if self.config.stt_model == "whisper-tiny-en":
+            if self.config.stt_model == "apple-stt":
+                emit({"type": "session_state", "state": "connecting", "detail": "Starting Apple Speech Recognition..."})
+                transcriber = AppleSttTranscriber(partial_stable_ms=self.config.partial_stable_ms)
+                transcriber.start()
+                self.transcriber = transcriber
+            elif self.config.stt_model == "whisper-tiny-en":
                 emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper tiny.en model..."})
                 self.transcriber = WhisperTinyEnTranscriber()
             elif self.config.stt_model == "whisper-small":
@@ -706,12 +903,19 @@ class SidecarApp:
         if self.capture is not None:
             self.capture.stop()
             self.capture = None
+        if isinstance(self.transcriber, AppleSttTranscriber):
+            self.transcriber.stop()
+        self.transcriber = None
         if self.active:
             self.active = False
             emit({"type": "session_state", "state": "stopped"})
 
     def _should_translate(self, chunk: TranscriptChunk) -> bool:
-        return self.translator is not None and self.config is not None
+        if self.translator is None or self.config is None:
+            return False
+        if self.config.translate_model in {"disabled", "off", "none"}:
+            return False
+        return True
 
     def _convert_s2t(self, text: str) -> str:
         return self.opencc_s2t.convert(text)
@@ -725,6 +929,7 @@ class SidecarApp:
             target = self.config.target_lang.lower()
             if "tw" in target or "hant" in target:
                 source_text = self._convert_s2t(source_text)
+        print(f"[sidecar] final_caption id={chunk.segment_id} lang={chunk.detected_lang} text={source_text[:60]}", file=sys.stderr)
         emit({
             "type": "final_caption",
             "segmentId": chunk.segment_id,
@@ -736,7 +941,9 @@ class SidecarApp:
             "confidence": chunk.confidence,
             "detectedLang": chunk.detected_lang,
         })
-        if self._should_translate(chunk):
+        should = self._should_translate(chunk)
+        print(f"[sidecar] should_translate={should} translator={self.translator is not None} translate_model={self.config.translate_model if self.config else 'N/A'}", file=sys.stderr)
+        if should:
             self.translation_queue.put((chunk, self.config))
 
     def _stream_loop(self) -> None:
@@ -766,7 +973,7 @@ class SidecarApp:
             base_time_ms = session_start_ms + int(total_samples_fed / SAMPLE_RATE * 1000)
             total_samples_fed += incoming.size
 
-            # Feed audio to VAD + SenseVoice
+            # Feed audio to VAD + STT (or pipe to Apple STT subprocess)
             started_at = now_ms()
             chunks = self.transcriber.feed_audio(incoming, base_time_ms)
             inference_ms = now_ms() - started_at
@@ -812,11 +1019,20 @@ class SidecarApp:
                     self.translation_queue.put((next_chunk, next_config))
                     break
 
+                # Use detected language from transcription when available,
+                # so Apple STT (detected_lang="en") translates en→zh-TW
+                # even when config.source_lang is "zh" (default).
+                effective_source = batch[0][0].detected_lang or config.source_lang
+                if effective_source in {"", "auto"}:
+                    effective_source = "auto"
+                texts = [item[0].source_text for item in batch]
+                print(f"[translate] {effective_source}→{config.target_lang} texts={texts}", file=sys.stderr)
                 translated_items = self.translator.translate_many(
-                    [item[0].source_text for item in batch],
-                    config.source_lang,
+                    texts,
+                    effective_source,
                     config.target_lang,
                 )
+                print(f"[translate] results={translated_items}", file=sys.stderr)
                 for index, (translated_chunk, _) in enumerate(batch):
                     translated = translated_items[index] if index < len(translated_items) else ""
                     emit({

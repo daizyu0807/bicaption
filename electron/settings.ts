@@ -9,6 +9,7 @@ export const defaultSettings: AppSettings = {
   sttModel: 'sensevoice',
   translateModel: 'disabled',
   chunkMs: 900,
+  partialStableMs: 600,
   beamSize: 1,
   bestOf: 1,
   vadFilter: false,
