@@ -145,7 +145,7 @@ function getSessionSummary(viewState: ReturnType<typeof useCaptionState>, settin
   if (viewState.sessionState === 'streaming') {
     const translation = isTranslationEnabled(settings) ? '雙語' : '單語';
     const audio = getInputHealthLabel(viewState);
-    const modelNames: Record<string, string> = { sensevoice: 'SenseVoice', 'whisper-tiny-en': 'Whisper tiny.en', 'whisper-small': 'Whisper small', 'zipformer-ko': 'Zipformer Ko', 'apple-stt': 'Apple STT' };
+    const modelNames: Record<string, string> = { sensevoice: 'SenseVoice', 'apple-stt': 'SFSpeechRecognizer' };
     const model = modelNames[settings.sttModel] ?? settings.sttModel;
     return `${model}・${translation}・${audio}`;
   }
@@ -171,7 +171,7 @@ function getInputHealthLabel(viewState: ReturnType<typeof useCaptionState>) {
 function getDownloadLabel(progress: ModelDownloadProgress | null): string {
   if (!progress) return '下載模型';
   if (progress.stage === 'extracting') return '解壓縮中…';
-  const stageNames: Record<string, string> = { sensevoice: 'SenseVoice', 'whisper-tiny-en': 'Whisper tiny.en', 'whisper-small': 'Whisper small', 'zipformer-ko': 'Zipformer Korean', 'apple-stt': 'Apple STT', vad: 'VAD' };
+  const stageNames: Record<string, string> = { sensevoice: 'SenseVoice', 'apple-stt': 'SFSpeechRecognizer', vad: 'VAD' };
   const name = stageNames[progress.stage] ?? progress.stage;
   if (progress.totalMB > 0) {
     return `下載 ${name}… ${progress.downloadedMB}/${progress.totalMB} MB (${progress.percent}%)`;
@@ -203,9 +203,6 @@ function SettingsView({
   const translationOn = isTranslationEnabled(draft);
   const modelReadyMap: Record<string, boolean> = {
     sensevoice: localModelStatus?.sensevoice ?? false,
-    'whisper-tiny-en': localModelStatus?.whisperTinyEn ?? false,
-    'whisper-small': localModelStatus?.whisperSmall ?? false,
-    'zipformer-ko': localModelStatus?.zipformerKo ?? false,
     'apple-stt': true,  // No model download needed — uses macOS built-in
   };
   const selectedModelReady = modelReadyMap[draft.sttModel] ?? false;
@@ -296,13 +293,10 @@ function SettingsView({
             </select>
           </label>
           <label>
-            語音辨識模型
+            語音辨識引擎
             <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
-              <option value="sensevoice">SenseVoice — 中文/粵語最佳，支援中英日韓</option>
-              <option value="whisper-tiny-en">Whisper tiny.en — 純英文，最快</option>
-              <option value="whisper-small">Whisper small — 日文/多語言，較慢</option>
-              <option value="zipformer-ko">Zipformer Korean — 韓文專用，最準</option>
-              <option value="apple-stt">Apple STT — 系統內建英文語音辨識</option>
+              <option value="apple-stt">SFSpeechRecognizer — macOS 內建，免下載，串流翻譯</option>
+              <option value="sensevoice">SenseVoice — 多語言混合辨識，支援中英日韓</option>
             </select>
           </label>
           {draft.sttModel === 'apple-stt' && (
@@ -327,15 +321,8 @@ function SettingsView({
               Source lang
               <select value={draft.sourceLang} onChange={(event) => {
                 const lang = event.target.value;
-                // Don't auto-switch away from Apple STT when changing language
-                if (draft.sttModel === 'apple-stt') {
-                  setDraft({ ...draft, sourceLang: lang });
-                } else {
-                  const recommendedModel: Record<string, string> = {
-                    auto: 'sensevoice', zh: 'sensevoice', en: 'whisper-tiny-en', ja: 'whisper-small', ko: 'zipformer-ko',
-                  };
-                  setDraft({ ...draft, sourceLang: lang, sttModel: recommendedModel[lang] ?? 'sensevoice' });
-                }
+                const recommended = lang === 'auto' ? 'sensevoice' : 'apple-stt';
+                setDraft({ ...draft, sourceLang: lang, sttModel: recommended });
               }}>
                 <option value="auto">自動偵測</option>
                 <option value="en">English</option>

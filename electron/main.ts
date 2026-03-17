@@ -51,6 +51,15 @@ function appendCaption(event: SidecarEvent) {
   if (!saveFilePath || event.type !== 'final_caption') {
     return;
   }
+  const settings = loadSettings();
+  const translationEnabled = settings.translateModel !== 'disabled'
+    && (settings.sourceLang === 'auto' || settings.targetLang !== settings.sourceLang);
+  // When translation is enabled, wait for the second emit that carries
+  // translatedText — skip the first emit (sourceText only) to avoid
+  // duplicate English lines in the saved file.
+  if (translationEnabled && !event.translatedText) {
+    return;
+  }
   let line = event.sourceText;
   if (event.translatedText) {
     line += `\n${event.translatedText}`;

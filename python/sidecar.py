@@ -617,8 +617,19 @@ class AppleSttTranscriber:
     outputs JSON lines on stdout matching the sidecar event protocol.
     """
 
-    def __init__(self, partial_stable_ms: int = 600) -> None:
+    # Map source language codes to Apple locale identifiers
+    LOCALE_MAP: dict[str, str] = {
+        "en": "en-US", "zh": "zh-CN", "zh-TW": "zh-TW", "ja": "ja-JP",
+        "ko": "ko-KR", "fr": "fr-FR", "de": "de-DE", "es": "es-ES",
+        "it": "it-IT", "pt": "pt-BR", "ru": "ru-RU", "th": "th-TH",
+        "vi": "vi-VN", "id": "id-ID", "ms": "ms-MY", "ar": "ar-SA",
+        "hi": "hi-IN", "auto": "en-US",
+    }
+
+    def __init__(self, source_lang: str = "en", partial_stable_ms: int = 600) -> None:
         self.partial_stable_ms = partial_stable_ms
+        self.locale = self.LOCALE_MAP.get(source_lang, source_lang)
+        self.detected_lang = source_lang if source_lang != "auto" else "en"
         self.finalized_ids: set[str] = set()
         self._segment_counter = 0
         self._proc: subprocess.Popen | None = None
@@ -639,7 +650,7 @@ class AppleSttTranscriber:
                 "Run: bash scripts/build-apple-stt.sh"
             )
         self._proc = subprocess.Popen(
-            [APPLE_STT_BIN],
+            [APPLE_STT_BIN, "--locale", self.locale],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -730,7 +741,7 @@ class AppleSttTranscriber:
                             started_at_ms=base_time_ms,
                             ended_at_ms=now_ms(),
                             confidence=float(event.get("confidence", 0.0)),
-                            detected_lang="en",
+                            detected_lang=self.detected_lang,
                         ))
                 # Reset for new recognition task
                 self._promoted_len = 0
@@ -788,7 +799,7 @@ class AppleSttTranscriber:
                     started_at_ms=base_time_ms,
                     ended_at_ms=now_ms(),
                     confidence=0.0,
-                    detected_lang="en",
+                    detected_lang=self.detected_lang,
                 ))
             self._promoted_len = len(full_text)
             self._last_partial_text = ""
@@ -859,7 +870,10 @@ class SidecarApp:
             self.capture.start()
             if self.config.stt_model == "apple-stt":
                 emit({"type": "session_state", "state": "connecting", "detail": "Starting Apple Speech Recognition..."})
-                transcriber = AppleSttTranscriber(partial_stable_ms=self.config.partial_stable_ms)
+                transcriber = AppleSttTranscriber(
+                    source_lang=self.config.source_lang,
+                    partial_stable_ms=self.config.partial_stable_ms,
+                )
                 transcriber.start()
                 self.transcriber = transcriber
             elif self.config.stt_model == "whisper-tiny-en":

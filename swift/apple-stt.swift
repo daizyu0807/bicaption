@@ -42,10 +42,11 @@ class SpeechEngine {
     private var lastPartialText = ""
     private var running = false
 
-    init() {
-        guard let rec = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) else {
+    init(locale: String) {
+        let loc = Locale(identifier: locale)
+        guard let rec = SFSpeechRecognizer(locale: loc) else {
             emitJSON(["type": "error", "code": "no_recognizer",
-                      "message": "SFSpeechRecognizer unavailable for en-US",
+                      "message": "SFSpeechRecognizer unavailable for \(locale)",
                       "recoverable": false])
             exit(1)
         }
@@ -320,6 +321,13 @@ func runSystemAudioCapture(engine: SpeechEngine) {
 
 let useSystemAudio = CommandLine.arguments.contains("--system-audio")
 
+// Parse --locale <id> (default: en-US)
+var localeId = "en-US"
+if let idx = CommandLine.arguments.firstIndex(of: "--locale"),
+   idx + 1 < CommandLine.arguments.count {
+    localeId = CommandLine.arguments[idx + 1]
+}
+
 // 1. Request speech recognition authorization
 let authSem = DispatchSemaphore(value: 0)
 SFSpeechRecognizer.requestAuthorization { status in
@@ -340,7 +348,7 @@ authSem.wait()
 // 2. Start engine
 emitJSON(["type": "ready"])
 
-let engine = SpeechEngine()
+let engine = SpeechEngine(locale: localeId)
 engine.start()
 
 // 3. Audio source

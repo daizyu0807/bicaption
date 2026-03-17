@@ -6,7 +6,7 @@ export const defaultSettings: AppSettings = {
   outputDeviceId: '',
   sourceLang: 'zh',
   targetLang: 'zh-TW',
-  sttModel: 'sensevoice',
+  sttModel: 'apple-stt',
   translateModel: 'disabled',
   chunkMs: 900,
   partialStableMs: 600,
