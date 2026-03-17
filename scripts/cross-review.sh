@@ -16,6 +16,9 @@ Options:
   --file    Review a file instead of git diff
   --list    Show reviewer availability and exit
   -h,--help Show this help
+
+Tip:
+  bash scripts/reviewer-auth.sh
 EOF
 }
 
@@ -232,6 +235,7 @@ TARGET_DETAIL="${TARGET_STATUS#*|}"
 
 if [[ "$TARGET_STATE" != "ready" ]]; then
   echo "Reviewer '$TARGET_MODEL' is not ready: $TARGET_DETAIL" >&2
+  echo "Run: bash scripts/reviewer-auth.sh $TARGET_MODEL" >&2
   print_status_table >&2
   exit 1
 fi
