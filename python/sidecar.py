@@ -637,6 +637,9 @@ class AppleSttTranscriber:
     # Sentence-ending punctuation triggers immediate promote regardless of
     # word count (the speaker finished a thought).
     SENTENCE_END_RE = re.compile(r'[.!?。！？]$')
+    # How many trailing words Apple is allowed to modify in-place.
+    # Earlier words are "frozen" (we keep our longer version).
+    UNLOCK_TAIL_WORDS = 3
     # Number of recent promoted texts to keep for deduplication.
     DEDUP_HISTORY = 10
 
@@ -658,6 +661,9 @@ class AppleSttTranscriber:
         # overlay showing continuous text independent of promote cycles.
         self._display_offset = 0
         self._display_offset_text = ""
+        # Display stabilization: track the longest displayed delta so that
+        # Apple's retroactive word deletions don't cause text to vanish.
+        self._last_stable_display: str = ""
         # Recent promoted texts for deduplication (prevents re-emitting
         # already-promoted content when offset calculation drifts).
         self._recent_promoted: list[str] = []
@@ -798,6 +804,39 @@ class AppleSttTranscriber:
         cleaned = delta.lstrip(' ,;:')
         return cleaned if cleaned else delta
 
+    def _stabilize_display_text(self, raw_delta: str) -> str:
+        """Prevent Apple's retroactive edits from deleting displayed words.
+
+        Strategy: words only accumulate, never disappear.  If Apple's new
+        partial has fewer words than what we last displayed, keep the old
+        (longer) prefix and only accept Apple's corrections on the last
+        UNLOCK_TAIL_WORDS words.
+
+        This mimics Apple Live Caption where words appear and stay put.
+        """
+        if not raw_delta:
+            return self._last_stable_display or ""
+
+        new_words = raw_delta.split()
+        old_words = self._last_stable_display.split() if self._last_stable_display else []
+
+        if len(new_words) >= len(old_words):
+            # Same or more words — accept Apple's full version
+            self._last_stable_display = raw_delta
+        else:
+            # Apple shortened text — keep our longer prefix, accept Apple's
+            # corrections only on the trailing UNLOCK_TAIL_WORDS.
+            keep = max(0, len(old_words) - self.UNLOCK_TAIL_WORDS)
+            tail_from_apple = new_words[-self.UNLOCK_TAIL_WORDS:] if new_words else []
+            stabilized = old_words[:keep] + tail_from_apple
+            self._last_stable_display = " ".join(stabilized)
+
+        return self._last_stable_display
+
+    def _reset_display_stable(self) -> None:
+        """Reset display stabilization (called on task restart or promote)."""
+        self._last_stable_display = ""
+
     def start(self) -> None:
         if not os.path.isfile(APPLE_STT_BIN):
             raise RuntimeError(
@@ -906,6 +945,7 @@ class AppleSttTranscriber:
                 self._promoted_text = ""
                 self._display_offset = 0
                 self._display_offset_text = ""
+                self._reset_display_stable()
                 self._recent_promoted.clear()
                 self._last_partial_text = ""
                 self._last_partial_change_ms = 0
@@ -939,7 +979,8 @@ class AppleSttTranscriber:
                     latest_partial_text, self._display_offset, self._display_offset_text)
                 if tmp is not None:
                     display_off = tmp
-            delta = self._clean_leading_fragment(latest_partial_text[display_off:].lstrip())
+            raw_delta = self._clean_leading_fragment(latest_partial_text[display_off:].lstrip())
+            delta = self._stabilize_display_text(raw_delta)
             if delta:
                 next_id = f"apple-seg-{self._segment_counter + 1}"
                 emit({
@@ -997,6 +1038,7 @@ class AppleSttTranscriber:
                 self._promoted_text = full_text
                 self._display_offset = len(full_text)
                 self._display_offset_text = full_text
+                self._reset_display_stable()
                 self._last_partial_text = ""
                 self._last_partial_change_ms = 0
 
