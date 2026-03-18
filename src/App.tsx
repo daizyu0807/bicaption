@@ -2,12 +2,8 @@ import { startTransition, useEffect, useRef, useState } from 'react';
 import type {
   AppSettings,
   CaptionConfig,
-  DictationFinalEvent,
   DictationHotkeyBinding,
-  DictationHotkeyEvent,
   DictationOutputAction,
-  DictationOutputStatusEvent,
-  DictationStateEvent,
   ModelDownloadProgress,
   ModelStatus,
   SessionMode,
@@ -152,30 +148,6 @@ function useCaptionState() {
   return viewState;
 }
 
-function useDictationState() {
-  const [viewState, setViewState] = useState(initialDictationViewState);
-
-  useEffect(() => {
-    if (!window.app) {
-      setViewState((current) => ({
-        ...current,
-        sessionState: 'error',
-        lastError: 'Preload API is unavailable.',
-      }));
-      return;
-    }
-
-    return window.app.subscribe('sidecar:event', (payload) => {
-      const event = payload as SidecarEvent;
-      startTransition(() => {
-        setViewState((current) => reduceDictationEvent(current, event));
-      });
-    });
-  }, []);
-
-  return viewState;
-}
-
 function isTranslationEnabled(settings: AppSettings): boolean {
   if (settings.translateModel === 'disabled') return false;
   return settings.sourceLang === 'auto' || settings.targetLang !== settings.sourceLang;
@@ -238,28 +210,6 @@ function getDownloadLabel(progress: ModelDownloadProgress | null): string {
   return `下載 ${name}…`;
 }
 
-function getDictationHotkeyEventLabel(event: DictationHotkeyEvent | null): string {
-  if (!event) {
-    return 'No hotkey events yet.';
-  }
-  switch (event.type) {
-    case 'listener_ready':
-      return `Listener ready${typeof event.keyCode === 'number' ? ` for keyCode ${event.keyCode}` : ''}`;
-    case 'hotkey_down':
-      return `Hotkey down${typeof event.keyCode === 'number' ? ` (${event.keyCode})` : ''}`;
-    case 'hotkey_up':
-      return `Hotkey up${typeof event.keyCode === 'number' ? ` (${event.keyCode})` : ''}`;
-    case 'permission_status':
-      return `Permission status: ${event.trusted ? 'trusted' : 'not trusted'}`;
-    case 'listener_stopped':
-      return event.message ?? 'Listener stopped';
-    case 'error':
-      return event.message ?? 'Unknown hotkey error';
-    default:
-      return 'No hotkey events yet.';
-  }
-}
-
 function getPermissionLabel(status: { trusted: boolean } | { available: boolean; trusted: boolean } | null, kind: 'accessibility' | 'input-monitoring') {
   if (!status) {
     return '檢查中';
@@ -284,42 +234,16 @@ function getDictationOutputActionLabel(action: DictationOutputAction) {
   }
 }
 
-function getDictationStateLabel(event: DictationStateEvent | null, viewState: ReturnType<typeof useDictationState>) {
-  if (event) {
-    return `${event.state}${event.detail ? ` - ${event.detail}` : ''}`;
-  }
-  if (viewState.lastError) {
-    return `error - ${viewState.lastError}`;
-  }
-  return `${viewState.dictationState}${viewState.detail ? ` - ${viewState.detail}` : ''}`;
-}
-
-function getDictationFinalLabel(event: DictationFinalEvent | null, viewState: ReturnType<typeof useDictationState>) {
-  const text = event?.text || viewState.finalText;
-  if (!text) {
-    return 'No dictation transcript yet.';
-  }
-  const chunkCount = event?.chunkCount ?? viewState.finalChunkCount;
-  const latencyMs = event?.latencyMs ?? viewState.finalLatencyMs;
-  const meta = [
-    typeof chunkCount === 'number' ? `${chunkCount} chunk${chunkCount === 1 ? '' : 's'}` : null,
-    typeof latencyMs === 'number' ? `${latencyMs}ms` : null,
-  ].filter(Boolean).join(' · ');
-  return meta ? `${text} (${meta})` : text;
-}
-
 function SettingsView({
   settings,
   devices,
   viewState,
-  dictationState,
   modelStatus,
   onSave,
 }: {
   settings: AppSettings;
   devices: Array<{ id: string; label: string; kind: string }>;
   viewState: ReturnType<typeof useCaptionState>;
-  dictationState: ReturnType<typeof useDictationState>;
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
@@ -333,15 +257,8 @@ function SettingsView({
   const [localModelStatus, setLocalModelStatus] = useState(modelStatus);
   const [accessibilityPermission, setAccessibilityPermission] = useState<{ trusted: boolean; status: string } | null>(null);
   const [inputMonitoringPermission, setInputMonitoringPermission] = useState<{ trusted: boolean; available: boolean; detail?: string } | null>(null);
-  const [hotkeyEvent, setHotkeyEvent] = useState<DictationHotkeyEvent | null>(null);
-  const [dictationEvent, setDictationEvent] = useState<DictationStateEvent | null>(null);
-  const [dictationFinalEvent, setDictationFinalEvent] = useState<DictationFinalEvent | null>(null);
-  const [dictationOutputStatus, setDictationOutputStatus] = useState<DictationOutputStatusEvent | null>(null);
   const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
-  const [isHotkeyTestRunning, setIsHotkeyTestRunning] = useState(false);
   const isStreaming = viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
-  const isDictating = ['connecting', 'streaming'].includes(dictationState.sessionState)
-    || ['recording', 'capturing', 'processing'].includes(dictationState.dictationState);
   const translationOn = isTranslationEnabled(draft);
   const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
   const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
@@ -406,15 +323,6 @@ function SettingsView({
     };
   }, []);
 
-  async function refreshPermissionState() {
-    const [accessibility, inputMonitoring] = await Promise.all([
-      window.app.checkAccessibilityPermission(),
-      window.app.checkInputMonitoringPermission(),
-    ]);
-    setAccessibilityPermission(accessibility);
-    setInputMonitoringPermission(inputMonitoring);
-  }
-
   async function ensureInputMonitoringPermission() {
     const current = await window.app.checkInputMonitoringPermission();
     setInputMonitoringPermission(current);
@@ -438,64 +346,8 @@ function SettingsView({
   }
 
   useEffect(() => {
-    return window.app.subscribe('dictation:hotkey-event', (payload) => {
-      const event = payload as DictationHotkeyEvent;
-      setHotkeyEvent(event);
-      if (event.type === 'listener_ready') {
-        setIsHotkeyTestRunning(true);
-        setHotkeyTestError(null);
-      } else if (event.type === 'listener_stopped') {
-        setIsHotkeyTestRunning(false);
-      } else if (event.type === 'error') {
-        setHotkeyTestError(event.message ?? 'Unknown hotkey error');
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    return window.app.subscribe('sidecar:event', (payload) => {
-      const event = payload as SidecarEvent;
-      if (event.mode !== 'dictation') {
-        return;
-      }
-      if (event.type === 'dictation_state') {
-        setDictationEvent(event);
-      } else if (event.type === 'dictation_final') {
-        setDictationFinalEvent(event);
-      } else if (event.type === 'session_state' && event.state === 'connecting') {
-        setDictationEvent(null);
-        setDictationFinalEvent(null);
-        setDictationOutputStatus(null);
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    return window.app.subscribe('dictation:output-status', (payload) => {
-      setDictationOutputStatus(payload as DictationOutputStatusEvent);
-    });
-  }, []);
-
-  useEffect(() => {
     setDraft(settings);
   }, [settings]);
-
-  async function startManualDictation() {
-    const granted = await ensureInputMonitoringPermission();
-    if (!granted) {
-      setHotkeyTestError('Input Monitoring settings were opened. Enable the app there before using hold-to-talk.');
-      return;
-    }
-    if (isStreaming || isDictating) {
-      await window.app.stopSession();
-    }
-    const nextSettings = {
-      ...draft,
-      translateModel: isTranslationEnabled(draft) ? 'google' : 'disabled',
-    };
-    await onSave(nextSettings);
-    await window.app.startSession(buildSessionConfig(nextSettings, 'dictation'));
-  }
 
   function toggleHotkeyModifier(modifier: string, checked: boolean) {
     const modifiers = checked
@@ -591,10 +443,6 @@ function SettingsView({
               <span className="hotkey-event-label">快捷鍵</span>
               <span className="hotkey-event-value">{getDictationHotkeyLabel(hotkeyBinding)}</span>
             </div>
-            <div className="hotkey-event-box">
-              <span className="hotkey-event-label">最近事件</span>
-              <span className="hotkey-event-value">{getDictationHotkeyEventLabel(hotkeyEvent)}</span>
-            </div>
           </div>
           {hotkeyValidation.error && <p className="error-text">{hotkeyValidation.error}</p>}
           {!hotkeyValidation.error && hotkeyValidation.warning && <p className="model-hint">{hotkeyValidation.warning}</p>}
@@ -685,8 +533,6 @@ function SettingsView({
                     const granted = await ensureInputMonitoringPermission();
                     if (!granted) {
                       setHotkeyTestError('Input Monitoring settings were opened. Enable the app there, then reopen the app if needed.');
-                    } else {
-                      await refreshPermissionState();
                     }
                   } catch (error) {
                     setHotkeyTestError(error instanceof Error ? error.message : 'Failed to request Input Monitoring permission');
@@ -699,42 +545,6 @@ function SettingsView({
             {inputMonitoringPermission?.detail && !inputMonitoringPermission.trusted && (
               <p className="error-text">{inputMonitoringPermission.detail}</p>
             )}
-          </div>
-          <div className="hotkey-actions">
-            <button
-              className="secondary"
-              disabled={isHotkeyTestRunning || !hotkeyValidation.isValid}
-              onClick={async () => {
-                setHotkeyTestError(null);
-                try {
-                  const granted = await ensureInputMonitoringPermission();
-                  if (!granted) {
-                    setHotkeyTestError('Input Monitoring settings were opened. Enable the app there before testing global hotkeys.');
-                    return;
-                  }
-                  setIsHotkeyTestRunning(true);
-                  await window.app.testDictationHotkey(hotkeyBinding);
-                } catch (error) {
-                  setIsHotkeyTestRunning(false);
-                  setHotkeyTestError(error instanceof Error ? error.message : 'Failed to start dictation hotkey test');
-                }
-              }}
-            >
-              開始測試
-            </button>
-            <button
-              className="secondary"
-              disabled={!isHotkeyTestRunning}
-              onClick={async () => {
-                try {
-                  await window.app.stopDictationHotkeyTest();
-                } finally {
-                  setIsHotkeyTestRunning(false);
-                }
-              }}
-            >
-              停止測試
-            </button>
           </div>
           {hotkeyTestError && <p className="error-text">{hotkeyTestError}</p>}
         </article>
@@ -750,20 +560,6 @@ function SettingsView({
               <option value="sensevoice">SenseVoice</option>
             </select>
           </label>
-          <div className="dictation-summary-grid">
-            <div className="hotkey-event-box">
-              <span className="hotkey-event-label">工作階段</span>
-              <span className="hotkey-event-value">{dictationState.sessionState}</span>
-            </div>
-            <div className="hotkey-event-box">
-              <span className="hotkey-event-label">目前狀態</span>
-              <span className="hotkey-event-value">{getDictationStateLabel(dictationEvent, dictationState)}</span>
-            </div>
-          </div>
-          <div className="hotkey-event-box">
-            <span className="hotkey-event-label">最近辨識結果</span>
-            <span className="hotkey-event-value">{getDictationFinalLabel(dictationFinalEvent, dictationState)}</span>
-          </div>
           <label>
             輸出方式
             <select
@@ -780,17 +576,7 @@ function SettingsView({
               自動貼上需要 Accessibility 權限。若貼上失敗，文字仍會保留在剪貼簿。
             </p>
           )}
-          {dictationOutputStatus && (
-            <div className="hotkey-event-box">
-              <span className="hotkey-event-label">輸出結果</span>
-              <span className="hotkey-event-value">
-                {dictationOutputStatus.status}
-                {dictationOutputStatus.detail ? ` - ${dictationOutputStatus.detail}` : ''}
-              </span>
-            </div>
-          )}
           <p className="model-hint">按住快捷鍵開始語音輸入，放開後結束並輸出文字。</p>
-          {dictationState.lastError && <p className="error-text">{dictationState.lastError}</p>}
         </article>
         </div>
         )}
@@ -974,7 +760,6 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const captionState = useCaptionState();
-  const dictationState = useDictationState();
   const overlayRoute = isOverlayRoute();
 
   useEffect(() => {
@@ -1036,5 +821,5 @@ export function App() {
     return <OverlayView viewState={captionState} settings={settings} />;
   }
 
-  return <SettingsView settings={settings} devices={devices} viewState={captionState} dictationState={dictationState} modelStatus={modelStatus} onSave={onSave} />;
+  return <SettingsView settings={settings} devices={devices} viewState={captionState} modelStatus={modelStatus} onSave={onSave} />;
 }
