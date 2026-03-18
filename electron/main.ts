@@ -482,7 +482,9 @@ function createTray() {
     return;
   }
   const trayImage = nativeImage.createFromPath(getTrayIconPath()).resize({ width: 18, height: 18 });
+  trayImage.setTemplateImage(true);
   tray = new Tray(trayImage);
+  tray.setTitle('BiCaption');
   tray.setToolTip('BiCaption');
   tray.on('click', () => showSettingsWindow());
   rebuildTrayMenu();
