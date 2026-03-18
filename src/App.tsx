@@ -43,6 +43,7 @@ function OverlayView({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; winX: number; winY: number } | null>(null);
   const dictationPrompt = getDictationPrompt(dictationState, showDictationResult);
+  const isPromptOnlyMode = Boolean(dictationPrompt) && !hasVisibleCaptions;
 
   useEffect(() => {
     const el = stackRef.current;
@@ -116,10 +117,10 @@ function OverlayView({
             <span aria-hidden="true">{isCollapsed ? '+' : '−'}</span>
           </button>
         </div>
-        <span className="overlay-title">BiCaption</span>
+        <span className="overlay-title">{isPromptOnlyMode ? '語音輸入' : 'BiCaption'}</span>
       </header>
       {!isCollapsed && (
-        <section className="overlay-body" ref={stackRef}>
+        <section className={`overlay-body${isPromptOnlyMode ? ' overlay-body-prompt-only' : ''}`} ref={stackRef}>
           {dictationPrompt && (
             <div className={`dictation-prompt dictation-prompt-${dictationPrompt.tone} no-drag`}>
               <span className="dictation-prompt-dot" aria-hidden="true">
@@ -152,7 +153,7 @@ function OverlayView({
           {viewState.partial ? (
             <p className="caption-line caption-partial no-drag">{viewState.partial.sourceText}</p>
           ) : null}
-          {!hasVisibleCaptions ? (
+          {!hasVisibleCaptions && !dictationPrompt ? (
             <>
               <p className="caption-line caption-hint no-drag">Listening for speech...</p>
               <p className="caption-line caption-hint no-drag">Confirm input level is active, then captions appear here.</p>
