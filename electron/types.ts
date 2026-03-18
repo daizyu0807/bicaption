@@ -127,6 +127,7 @@ export interface AppSettings {
   subtitleDeviceId: string;
   dictationDeviceId: string;
   outputDeviceId: string;
+  dictationSttModel: string;
   dictationHotkey: DictationHotkeyBinding;
   sourceLang: string;
   targetLang: string;

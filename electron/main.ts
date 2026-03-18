@@ -214,7 +214,7 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionCo
     outputDeviceId: settings.outputDeviceId,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
-    sttModel: settings.sttModel,
+    sttModel: mode === 'dictation' ? settings.dictationSttModel : settings.sttModel,
     translateModel: settings.translateModel,
     chunkMs: settings.chunkMs,
     partialStableMs: settings.partialStableMs,

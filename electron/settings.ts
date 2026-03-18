@@ -6,6 +6,7 @@ export const defaultSettings: AppSettings = {
   subtitleDeviceId: '',
   dictationDeviceId: '',
   outputDeviceId: '',
+  dictationSttModel: 'apple-stt',
   dictationHotkey: {
     keyCode: 59,
     modifiers: [],

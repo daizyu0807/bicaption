@@ -189,7 +189,7 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
     outputDeviceId: settings.outputDeviceId,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
-    sttModel: settings.sttModel,
+    sttModel: mode === 'dictation' ? settings.dictationSttModel : settings.sttModel,
     translateModel: settings.translateModel,
     chunkMs: settings.chunkMs,
     partialStableMs: settings.partialStableMs,
@@ -352,6 +352,14 @@ function SettingsView({
   const selectedModelReady = modelReadyMap[draft.sttModel] ?? false;
   const modelsReady = draft.sttModel === 'apple-stt' || (selectedModelReady && (localModelStatus?.vad ?? true));
   const isDownloading = downloadProgress !== null;
+  const subtitleModelEntries = [
+    { key: 'sensevoice', label: 'SenseVoice', ready: localModelStatus?.sensevoice },
+    { key: 'whisper-tiny-en', label: 'Whisper tiny.en', ready: localModelStatus?.whisperTinyEn },
+    { key: 'whisper-small', label: 'Whisper small', ready: localModelStatus?.whisperSmall },
+    { key: 'zipformer-ko', label: 'Zipformer Ko', ready: localModelStatus?.zipformerKo },
+    { key: 'vad', label: 'VAD', ready: localModelStatus?.vad },
+  ] as const;
+  const shouldShowModelPanel = isDownloading || Boolean(downloadError) || subtitleModelEntries.some(({ ready }) => !ready);
 
   useEffect(() => {
     setLocalModelStatus(modelStatus);
@@ -530,17 +538,11 @@ function SettingsView({
             語音輸入
           </button>
         </div>
-        {activeSettingsTab === 'subtitle' && (
+        {activeSettingsTab === 'subtitle' && shouldShowModelPanel && (
         <article className="panel model-panel">
           <h2>Models</h2>
           <div className="model-status-row">
-            {([
-              { key: 'sensevoice', label: 'SenseVoice', ready: localModelStatus?.sensevoice },
-              { key: 'whisper-tiny-en', label: 'Whisper tiny.en', ready: localModelStatus?.whisperTinyEn },
-              { key: 'whisper-small', label: 'Whisper small', ready: localModelStatus?.whisperSmall },
-              { key: 'zipformer-ko', label: 'Zipformer Ko', ready: localModelStatus?.zipformerKo },
-              { key: 'vad', label: 'VAD', ready: localModelStatus?.vad },
-            ] as const).map(({ key, label, ready }) => (
+            {subtitleModelEntries.map(({ key, label, ready }) => (
               <div key={key} className="model-row">
                 <span className={ready ? 'model-ok' : 'model-missing'}>
                   {ready ? '✓' : '✗'} {label}
@@ -738,6 +740,16 @@ function SettingsView({
         </article>
         <article className="panel panel-compact">
           <h2>語音輸入</h2>
+          <label>
+            語音辨識引擎
+            <select
+              value={draft.dictationSttModel}
+              onChange={(event) => setDraft({ ...draft, dictationSttModel: event.target.value })}
+            >
+              <option value="apple-stt">SFSpeechRecognizer</option>
+              <option value="sensevoice">SenseVoice</option>
+            </select>
+          </label>
           <div className="dictation-summary-grid">
             <div className="hotkey-event-box">
               <span className="hotkey-event-label">工作階段</span>
