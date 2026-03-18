@@ -94,7 +94,11 @@ function handleDictationFinal(event: SidecarEvent) {
   if (event.type !== 'dictation_final') {
     return;
   }
-  if (event.text.trim()) {
+  const settings = loadSettings();
+  const shouldCopy = settings.dictationOutputAction === 'copy'
+    || settings.dictationOutputAction === 'paste'
+    || settings.dictationOutputAction === 'copy-and-paste';
+  if (shouldCopy && event.text.trim()) {
     clipboard.writeText(event.text);
   }
   sendToWindows('sidecar:event', event);

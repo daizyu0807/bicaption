@@ -67,7 +67,8 @@
 - `Phase 5.1 Clipboard Output`
   - 已開始
   - Electron main 已在收到 `dictation_final` 時將文字寫入 clipboard。
-  - 尚未補 output action 設定與 paste 流程。
+  - 已補 `dictationOutputAction` 設定欄位。
+  - `paste` / `copy-and-paste` 目前仍明確降級為 clipboard fallback，尚未接真正 paste 流程。
 
 ## Interrupted Changes
 
@@ -87,7 +88,7 @@
 
 ## Next Actions
 
-1. 補 output action 設定，讓 clipboard / paste 有明確選項。
+1. 把 `paste` / `copy-and-paste` 接成真正的 paste 流程與安全降級。
 2. 把 dictation hotkey binding 從硬編碼改成 settings 驅動。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 

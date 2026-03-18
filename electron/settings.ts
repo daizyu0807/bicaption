@@ -14,6 +14,7 @@ export const defaultSettings: AppSettings = {
   bestOf: 1,
   vadFilter: false,
   conditionOnPrev: false,
+  dictationOutputAction: 'copy',
   saveEnabled: false,
   saveDirectory: '',
   overlayOpacity: 0.9,

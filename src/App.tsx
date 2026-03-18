@@ -5,6 +5,7 @@ import type {
   DictationFinalEvent,
   DictationHotkeyBinding,
   DictationHotkeyEvent,
+  DictationOutputAction,
   DictationStateEvent,
   ModelDownloadProgress,
   ModelStatus,
@@ -286,6 +287,17 @@ function getPermissionLabel(status: { trusted: boolean } | { available: boolean;
     return 'Granted';
   }
   return kind === 'accessibility' ? 'Denied' : 'Not granted';
+}
+
+function getDictationOutputActionLabel(action: DictationOutputAction) {
+  switch (action) {
+    case 'copy':
+      return 'Copy to clipboard';
+    case 'paste':
+      return 'Paste to foreground app';
+    case 'copy-and-paste':
+      return 'Copy and paste';
+  }
 }
 
 function getDictationStateLabel(event: DictationStateEvent | null, viewState: ReturnType<typeof useDictationState>) {
@@ -667,6 +679,22 @@ function SettingsView({
 
         <article className="panel">
           <h2>Output</h2>
+          <label>
+            Dictation output
+            <select
+              value={draft.dictationOutputAction}
+              onChange={(event) => setDraft({ ...draft, dictationOutputAction: event.target.value as DictationOutputAction })}
+            >
+              <option value="copy">{getDictationOutputActionLabel('copy')}</option>
+              <option value="paste">{getDictationOutputActionLabel('paste')}</option>
+              <option value="copy-and-paste">{getDictationOutputActionLabel('copy-and-paste')}</option>
+            </select>
+          </label>
+          {draft.dictationOutputAction !== 'copy' && (
+            <p className="model-hint">
+              Paste actions currently fall back to clipboard copy until the paste safety gate is implemented.
+            </p>
+          )}
           <div className="form-row-2">
             <label>
               Opacity

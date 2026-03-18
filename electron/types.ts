@@ -1,5 +1,6 @@
 export type SessionState = 'idle' | 'connecting' | 'streaming' | 'error' | 'stopped';
 export type SessionMode = 'subtitle' | 'dictation';
+export type DictationOutputAction = 'copy' | 'paste' | 'copy-and-paste';
 
 export interface DictationHotkeyBinding {
   keyCode: number;
@@ -127,6 +128,7 @@ export interface AppSettings {
   bestOf: number;
   vadFilter: boolean;
   conditionOnPrev: boolean;
+  dictationOutputAction: DictationOutputAction;
   saveEnabled: boolean;
   saveDirectory: string;
   overlayOpacity: number;
