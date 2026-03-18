@@ -102,6 +102,39 @@ function OverlayView({
     await window.app.showSettings();
   }
 
+  if (isDictationOverlayMode && dictationPrompt) {
+    return (
+      <main className="overlay-window overlay-window-dictation" style={overlayStyle}>
+        <section className="dictation-overlay-shell">
+          <div className={`dictation-prompt dictation-prompt-${dictationPrompt.tone} no-drag`}>
+            <span className="dictation-prompt-dot" aria-hidden="true">
+              {dictationPrompt.tone === 'live' && (
+                <>
+                  <span className="dictation-prompt-ring dictation-prompt-ring-a" />
+                  <span className="dictation-prompt-ring dictation-prompt-ring-b" />
+                </>
+              )}
+            </span>
+            <div className="dictation-prompt-copy">
+              <p className="dictation-prompt-title">{dictationPrompt.title}</p>
+              <p className="dictation-prompt-text">{dictationPrompt.detail}</p>
+              {dictationPrompt.tone === 'processing' && (
+                <span className="dictation-prompt-progress" aria-hidden="true">
+                  <span className="dictation-prompt-progress-bar" />
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="dictation-overlay-actions no-drag">
+            <button className="dictation-overlay-close" onClick={closeOverlayAndFocusSettings} aria-label="Hide overlay">
+              隱藏
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="overlay-window" style={overlayStyle}>
       <header className="overlay-titlebar" onMouseDown={async (e) => {
