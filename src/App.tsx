@@ -1,5 +1,14 @@
 import { startTransition, useEffect, useRef, useState } from 'react';
-import type { AppSettings, CaptionConfig, ModelDownloadProgress, ModelStatus, SessionMode, SidecarEvent } from '../electron/types.js';
+import type {
+  AppSettings,
+  CaptionConfig,
+  DictationHotkeyBinding,
+  DictationHotkeyEvent,
+  ModelDownloadProgress,
+  ModelStatus,
+  SessionMode,
+  SidecarEvent,
+} from '../electron/types.js';
 import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from './caption-state.js';
 
 function isOverlayRoute() {
@@ -198,6 +207,60 @@ function getDownloadLabel(progress: ModelDownloadProgress | null): string {
   return `下載 ${name}…`;
 }
 
+function getDictationHotkeyLabel(binding: DictationHotkeyBinding): string {
+  const modifierLabels = binding.modifiers.map((modifier) => {
+    switch (modifier) {
+      case 'cmd':
+        return 'Cmd';
+      case 'shift':
+        return 'Shift';
+      case 'ctrl':
+        return 'Ctrl';
+      case 'alt':
+        return 'Option';
+      default:
+        return modifier;
+    }
+  });
+  const keyLabel = binding.keyCode === 49 ? 'Space' : `KeyCode ${binding.keyCode}`;
+  return [...modifierLabels, keyLabel].join('+');
+}
+
+function getDictationHotkeyEventLabel(event: DictationHotkeyEvent | null): string {
+  if (!event) {
+    return 'No hotkey events yet.';
+  }
+  switch (event.type) {
+    case 'listener_ready':
+      return `Listener ready${typeof event.keyCode === 'number' ? ` for keyCode ${event.keyCode}` : ''}`;
+    case 'hotkey_down':
+      return `Hotkey down${typeof event.keyCode === 'number' ? ` (${event.keyCode})` : ''}`;
+    case 'hotkey_up':
+      return `Hotkey up${typeof event.keyCode === 'number' ? ` (${event.keyCode})` : ''}`;
+    case 'permission_status':
+      return `Permission status: ${event.trusted ? 'trusted' : 'not trusted'}`;
+    case 'listener_stopped':
+      return event.message ?? 'Listener stopped';
+    case 'error':
+      return event.message ?? 'Unknown hotkey error';
+    default:
+      return 'No hotkey events yet.';
+  }
+}
+
+function getPermissionLabel(status: { trusted: boolean } | { available: boolean; trusted: boolean } | null, kind: 'accessibility' | 'input-monitoring') {
+  if (!status) {
+    return 'Checking…';
+  }
+  if ('available' in status && !status.available) {
+    return 'Unavailable';
+  }
+  if (status.trusted) {
+    return 'Granted';
+  }
+  return kind === 'accessibility' ? 'Denied' : 'Not granted';
+}
+
 function SettingsView({
   settings,
   devices,
@@ -218,8 +281,14 @@ function SettingsView({
   const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [localModelStatus, setLocalModelStatus] = useState(modelStatus);
+  const [accessibilityPermission, setAccessibilityPermission] = useState<{ trusted: boolean; status: string } | null>(null);
+  const [inputMonitoringPermission, setInputMonitoringPermission] = useState<{ trusted: boolean; available: boolean; detail?: string } | null>(null);
+  const [hotkeyEvent, setHotkeyEvent] = useState<DictationHotkeyEvent | null>(null);
+  const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
+  const [isHotkeyTestRunning, setIsHotkeyTestRunning] = useState(false);
   const isStreaming = viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
   const translationOn = isTranslationEnabled(draft);
+  const hotkeyBinding: DictationHotkeyBinding = { keyCode: 49, modifiers: ['cmd', 'shift'] };
   const modelReadyMap: Record<string, boolean> = {
     sensevoice: localModelStatus?.sensevoice ?? false,
     'apple-stt': true,  // No model download needed — uses macOS built-in
@@ -248,6 +317,44 @@ function SettingsView({
       }),
     ];
     return () => unsubs.forEach((fn) => fn());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      window.app.checkAccessibilityPermission(),
+      window.app.checkInputMonitoringPermission(),
+    ]).then(([accessibility, inputMonitoring]) => {
+      if (cancelled) {
+        return;
+      }
+      setAccessibilityPermission(accessibility);
+      setInputMonitoringPermission(inputMonitoring);
+    }).catch((error: unknown) => {
+      if (cancelled) {
+        return;
+      }
+      setHotkeyTestError(error instanceof Error ? error.message : 'Failed to check dictation permissions');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return window.app.subscribe('dictation:hotkey-event', (payload) => {
+      const event = payload as DictationHotkeyEvent;
+      setHotkeyEvent(event);
+      if (event.type === 'listener_ready') {
+        setIsHotkeyTestRunning(true);
+        setHotkeyTestError(null);
+      } else if (event.type === 'listener_stopped') {
+        setIsHotkeyTestRunning(false);
+      } else if (event.type === 'error') {
+        setHotkeyTestError(event.message ?? 'Unknown hotkey error');
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -299,6 +406,61 @@ function SettingsView({
           )}
           {isDownloading && <p className="model-hint">{getDownloadLabel(downloadProgress)}</p>}
           {downloadError && <p className="error-text">{downloadError}</p>}
+        </article>
+
+        <article className="panel">
+          <h2>Dictation Hotkey Test</h2>
+          <p className="model-hint">Binding: {getDictationHotkeyLabel(hotkeyBinding)}</p>
+          <div className="hotkey-permissions">
+            <div className="hotkey-permission-row">
+              <span className="hotkey-permission-label">Accessibility</span>
+              <span className={accessibilityPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
+                {getPermissionLabel(accessibilityPermission, 'accessibility')}
+              </span>
+            </div>
+            <div className="hotkey-permission-row">
+              <span className="hotkey-permission-label">Input Monitoring</span>
+              <span className={inputMonitoringPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
+                {getPermissionLabel(inputMonitoringPermission, 'input-monitoring')}
+              </span>
+            </div>
+          </div>
+          <div className="hotkey-actions">
+            <button
+              className="secondary"
+              disabled={isHotkeyTestRunning}
+              onClick={async () => {
+                setHotkeyTestError(null);
+                setIsHotkeyTestRunning(true);
+                try {
+                  await window.app.testDictationHotkey(hotkeyBinding);
+                } catch (error) {
+                  setIsHotkeyTestRunning(false);
+                  setHotkeyTestError(error instanceof Error ? error.message : 'Failed to start dictation hotkey test');
+                }
+              }}
+            >
+              Start Test
+            </button>
+            <button
+              className="secondary"
+              disabled={!isHotkeyTestRunning}
+              onClick={async () => {
+                try {
+                  await window.app.stopDictationHotkeyTest();
+                } finally {
+                  setIsHotkeyTestRunning(false);
+                }
+              }}
+            >
+              Stop Test
+            </button>
+          </div>
+          <div className="hotkey-event-box">
+            <span className="hotkey-event-label">Latest event</span>
+            <span className="hotkey-event-value">{getDictationHotkeyEventLabel(hotkeyEvent)}</span>
+          </div>
+          {hotkeyTestError && <p className="error-text">{hotkeyTestError}</p>}
         </article>
 
         <article className="panel">

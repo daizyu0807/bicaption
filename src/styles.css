@@ -395,6 +395,69 @@ button:disabled {
   color: #ff8d8d;
 }
 
+.hotkey-permissions {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hotkey-permission-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.76rem;
+}
+
+.hotkey-permission-label {
+  color: rgba(246, 239, 227, 0.62);
+}
+
+.hotkey-permission-ok {
+  color: #8cd98c;
+  font-weight: 700;
+}
+
+.hotkey-permission-missing {
+  color: #ffb36c;
+  font-weight: 700;
+}
+
+.hotkey-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.hotkey-actions button {
+  flex: 1;
+}
+
+.hotkey-event-box {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(8, 12, 18, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hotkey-event-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(246, 239, 227, 0.5);
+}
+
+.hotkey-event-value {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #f6efe3;
+  word-break: break-word;
+}
+
 .progress-bar-container {
   height: 6px;
   border-radius: 999px;
