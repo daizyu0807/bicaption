@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, shell, systemPreferences } from 'electron';
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -77,6 +77,16 @@ function sendToWindows(channel: string, payload: unknown) {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.webContents.send(channel, payload);
   }
+}
+
+function handleDictationFinal(event: SidecarEvent) {
+  if (event.type !== 'dictation_final') {
+    return;
+  }
+  if (event.text.trim()) {
+    clipboard.writeText(event.text);
+  }
+  sendToWindows('sidecar:event', event);
 }
 
 function setOverlayVisible(visible: boolean) {
@@ -191,7 +201,7 @@ function bindBridge() {
     sendToWindows('sidecar:event', event);
   });
   bridge.on('dictation_state', forwardEvent);
-  bridge.on('dictation_final', forwardEvent);
+  bridge.on('dictation_final', handleDictationFinal);
   bridge.on('session_stopped_ack', forwardEvent);
   bridge.on('error', (event: SidecarEvent) => {
     if (event.type === 'error' && event.mode === 'subtitle' && !event.recoverable) {

@@ -54,11 +54,19 @@
 - `Phase 2.4 Dictation UI State`
   - 已開始
   - renderer 已有獨立 dictation reducer 與最小觀察面板，不再和 subtitle caption reducer 共用狀態。
-  - 目前仍缺正式的 dictation mode 切換控制與完整 UX。
+  - 已補 app 內手動 start/stop dictation，作為 fallback 與除錯入口。
+  - 目前仍缺正式的 hotkey 驅動 dictation mode 切換與完整 UX。
 - `Phase 3.1 Sidecar Dictation Session`
   - 進行中
   - Python sidecar 已開始分流 `mode=dictation`，並在 finalize 前緩存 transcript。
-  - 尚未完成 renderer / main 對 `dictation_final` 的實際消費流程。
+  - renderer / main 已可消費 `dictation_final`，但真正的 start/stop UX 尚未接完。
+
+### Slice E
+
+- `Phase 5.1 Clipboard Output`
+  - 已開始
+  - Electron main 已在收到 `dictation_final` 時將文字寫入 clipboard。
+  - 尚未補 output action 設定與 paste 流程。
 
 ## Interrupted Changes
 
@@ -78,8 +86,8 @@
 
 ## Next Actions
 
-1. 先補 `Phase 5.1 Clipboard Output` 的 main process 消費流程。
-2. 再補真正的 dictation start/stop UX，讓 hotkey / session / renderer 狀態串起來。
+1. 補真正的 dictation start/stop UX，讓 hotkey / session / renderer 狀態串起來。
+2. 補 output action 設定，讓 clipboard / paste 有明確選項。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 
 ## Verification Notes

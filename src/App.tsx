@@ -342,6 +342,8 @@ function SettingsView({
   const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
   const [isHotkeyTestRunning, setIsHotkeyTestRunning] = useState(false);
   const isStreaming = viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
+  const isDictating = ['connecting', 'streaming'].includes(dictationState.sessionState)
+    || ['recording', 'capturing', 'processing'].includes(dictationState.dictationState);
   const translationOn = isTranslationEnabled(draft);
   const hotkeyBinding: DictationHotkeyBinding = { keyCode: 49, modifiers: ['cmd', 'shift'] };
   const modelReadyMap: Record<string, boolean> = {
@@ -432,6 +434,18 @@ function SettingsView({
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
+
+  async function startManualDictation() {
+    if (isStreaming || isDictating) {
+      await window.app.stopSession();
+    }
+    const nextSettings = {
+      ...draft,
+      translateModel: isTranslationEnabled(draft) ? 'google' : 'disabled',
+    };
+    await onSave(nextSettings);
+    await window.app.startSession(buildSessionConfig(nextSettings, 'dictation'));
+  }
 
 
   return (
@@ -545,6 +559,22 @@ function SettingsView({
           <div className="hotkey-event-box">
             <span className="hotkey-event-label">Latest transcript</span>
             <span className="hotkey-event-value">{getDictationFinalLabel(dictationFinalEvent, dictationState)}</span>
+          </div>
+          <div className="hotkey-actions">
+            <button
+              className="secondary"
+              disabled={!modelsReady || isDictating}
+              onClick={() => void startManualDictation()}
+            >
+              Start Dictation
+            </button>
+            <button
+              className="secondary"
+              disabled={!isDictating}
+              onClick={() => window.app.stopSession()}
+            >
+              Stop Dictation
+            </button>
           </div>
           {dictationState.lastError && <p className="error-text">{dictationState.lastError}</p>}
         </article>
