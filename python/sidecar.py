@@ -137,7 +137,8 @@ def list_audio_devices() -> list[dict[str, Any]]:
             ch_label = f"{max_outputs}ch"
         devices.append(
             {
-                "id": str(index),
+                "id": name,
+                "index": index,
                 "name": name,
                 "label": f"{name} ({ch_label})",
                 "kind": kind,
@@ -161,6 +162,12 @@ def resolve_device(device_id: str, require_input: bool = True) -> int | None:
 
     # Try name substring match
     lowered = device_id.lower()
+    for index, device in enumerate(devices):
+        if int(device.get(channel_key, 0)) <= 0:
+            continue
+        name = str(device.get("name", ""))
+        if name == device_id:
+            return index
     for index, device in enumerate(devices):
         if int(device.get(channel_key, 0)) <= 0:
             continue

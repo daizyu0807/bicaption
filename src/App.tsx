@@ -795,10 +795,13 @@ function SettingsView({
             </select>
           </label>
           {draft.sttModel === 'apple-stt' && (
-            <label>
-              翻譯觸發延遲（{draft.partialStableMs}ms）
-              <input type="range" min="200" max="2000" step="100" value={draft.partialStableMs} onChange={(event) => setDraft({ ...draft, partialStableMs: Number(event.target.value) })} />
-            </label>
+            <>
+              <label>
+                翻譯觸發延遲（{draft.partialStableMs}ms）
+                <input type="range" min="200" max="2000" step="100" value={draft.partialStableMs} onChange={(event) => setDraft({ ...draft, partialStableMs: Number(event.target.value) })} />
+              </label>
+              <p className="model-hint">SFSpeechRecognizer 會依照目前的 Source lang 辨識，不會做多語自動判斷。若你講中文，請改成「中文」或改用 SenseVoice + 自動偵測。</p>
+            </>
           )}
           <label>
             系統音訊（Loopback）
@@ -996,12 +999,16 @@ export function App() {
       const inputDeviceIds = new Set(
         loadedDevices.filter((d) => d.kind === 'input' || d.kind === 'duplex').map((d) => d.id),
       );
+      const outputDeviceIds = new Set(loadedDevices.filter((d) => d.kind === 'output' || d.kind === 'duplex').map((d) => d.id));
       const preferred = pickPreferredInputDevice(loadedDevices);
       if (!loadedSettings.subtitleDeviceId || !inputDeviceIds.has(loadedSettings.subtitleDeviceId)) {
         loadedSettings = { ...loadedSettings, subtitleDeviceId: preferred?.id ?? '' };
       }
       if (!loadedSettings.dictationDeviceId || !inputDeviceIds.has(loadedSettings.dictationDeviceId)) {
         loadedSettings = { ...loadedSettings, dictationDeviceId: preferred?.id ?? '' };
+      }
+      if (loadedSettings.outputDeviceId && !outputDeviceIds.has(loadedSettings.outputDeviceId)) {
+        loadedSettings = { ...loadedSettings, outputDeviceId: '' };
       }
       setSettings(loadedSettings);
     }).catch((error: unknown) => {
