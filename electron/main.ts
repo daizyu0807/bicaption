@@ -382,8 +382,9 @@ function hideDictationOverlaySoon(delayMs = 1800) {
 
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
-    width: 380,
-    height: 820,
+    width: 468,
+    height: 780,
+    minWidth: 440,
     minHeight: 600,
     title: 'BiCaption',
     webPreferences: {

@@ -537,7 +537,7 @@ function SettingsView({
         <div className="topbar-right" />
       </header>
 
-      <section className="settings-grid">
+      <section className={`settings-grid settings-grid-${activeSettingsTab}`}>
         <div className="settings-tabbar">
           <button
             className={activeSettingsTab === 'subtitle' ? 'settings-tab active' : 'settings-tab'}
@@ -553,7 +553,7 @@ function SettingsView({
           </button>
         </div>
         {activeSettingsTab === 'subtitle' && shouldShowModelPanel && (
-        <article className="panel model-panel">
+        <article className="panel model-panel panel-span-full">
           <h2>Models</h2>
           <div className="model-status-row">
             {subtitleModelEntries.map(({ key, label, ready }) => (
@@ -584,7 +584,7 @@ function SettingsView({
         )}
 
         {activeSettingsTab === 'dictation' && (
-        <div className="dictation-grid">
+        <div className="dictation-grid settings-content-grid">
         <article className="panel panel-compact">
           <h2>語音輸入快捷鍵</h2>
           <label>
@@ -764,6 +764,7 @@ function SettingsView({
         )}
 
         {activeSettingsTab === 'subtitle' && (
+        <div className="subtitle-grid settings-content-grid">
         <article className="panel">
           <h2>Bilingual Capture</h2>
           <label>
@@ -855,9 +856,8 @@ function SettingsView({
             {overlaySuppressedLocal ? '顯示字幕' : '隱藏字幕'}
           </button>
         </article>
-        )}
+        
 
-        {activeSettingsTab === 'subtitle' && (
         <article className="panel">
           <h2>Subtitle Output</h2>
           <div className="form-row-2">
@@ -889,6 +889,7 @@ function SettingsView({
             </div>
           )}
         </article>
+        </div>
         )}
       </section>
 
