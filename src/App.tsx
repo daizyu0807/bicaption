@@ -521,7 +521,7 @@ function SettingsView({
             className={activeSettingsTab === 'subtitle' ? 'settings-tab active' : 'settings-tab'}
             onClick={() => setActiveSettingsTab('subtitle')}
           >
-            雙語辨識
+            雙語字幕
           </button>
           <button
             className={activeSettingsTab === 'dictation' ? 'settings-tab active' : 'settings-tab'}
@@ -530,6 +530,7 @@ function SettingsView({
             語音輸入
           </button>
         </div>
+        {activeSettingsTab === 'subtitle' && (
         <article className="panel model-panel">
           <h2>Models</h2>
           <div className="model-status-row">
@@ -564,9 +565,11 @@ function SettingsView({
           {isDownloading && <p className="model-hint">{getDownloadLabel(downloadProgress)}</p>}
           {downloadError && <p className="error-text">{downloadError}</p>}
         </article>
+        )}
 
         {activeSettingsTab === 'dictation' && (
-        <article className="panel">
+        <div className="dictation-grid">
+        <article className="panel panel-compact">
           <h2>Dictation Hotkey</h2>
           <label>
             輸入裝置（麥克風）
@@ -581,7 +584,16 @@ function SettingsView({
               ))}
             </select>
           </label>
-          <p className="model-hint">Binding: {getDictationHotkeyLabel(hotkeyBinding)}</p>
+          <div className="dictation-summary-grid">
+            <div className="hotkey-event-box">
+              <span className="hotkey-event-label">Binding</span>
+              <span className="hotkey-event-value">{getDictationHotkeyLabel(hotkeyBinding)}</span>
+            </div>
+            <div className="hotkey-event-box">
+              <span className="hotkey-event-label">Latest event</span>
+              <span className="hotkey-event-value">{getDictationHotkeyEventLabel(hotkeyEvent)}</span>
+            </div>
+          </div>
           {hotkeyValidation.error && <p className="error-text">{hotkeyValidation.error}</p>}
           {!hotkeyValidation.error && hotkeyValidation.warning && <p className="model-hint">{hotkeyValidation.warning}</p>}
           <div className="form-row-2">
@@ -722,26 +734,40 @@ function SettingsView({
               Stop Test
             </button>
           </div>
-          <div className="hotkey-event-box">
-            <span className="hotkey-event-label">Latest event</span>
-            <span className="hotkey-event-value">{getDictationHotkeyEventLabel(hotkeyEvent)}</span>
-          </div>
           {hotkeyTestError && <p className="error-text">{hotkeyTestError}</p>}
         </article>
-        )}
-
-        {activeSettingsTab === 'dictation' && (
-        <article className="panel">
-          <h2>Dictation Session</h2>
-          <p className="model-hint">Session: {dictationState.sessionState}</p>
-          <div className="hotkey-event-box">
-            <span className="hotkey-event-label">Latest state</span>
-            <span className="hotkey-event-value">{getDictationStateLabel(dictationEvent, dictationState)}</span>
+        <article className="panel panel-compact">
+          <h2>Dictation</h2>
+          <div className="dictation-summary-grid">
+            <div className="hotkey-event-box">
+              <span className="hotkey-event-label">Session</span>
+              <span className="hotkey-event-value">{dictationState.sessionState}</span>
+            </div>
+            <div className="hotkey-event-box">
+              <span className="hotkey-event-label">Latest state</span>
+              <span className="hotkey-event-value">{getDictationStateLabel(dictationEvent, dictationState)}</span>
+            </div>
           </div>
           <div className="hotkey-event-box">
             <span className="hotkey-event-label">Latest transcript</span>
             <span className="hotkey-event-value">{getDictationFinalLabel(dictationFinalEvent, dictationState)}</span>
           </div>
+          <label>
+            Dictation output
+            <select
+              value={draft.dictationOutputAction}
+              onChange={(event) => setDraft({ ...draft, dictationOutputAction: event.target.value as DictationOutputAction })}
+            >
+              <option value="copy">{getDictationOutputActionLabel('copy')}</option>
+              <option value="paste">{getDictationOutputActionLabel('paste')}</option>
+              <option value="copy-and-paste">{getDictationOutputActionLabel('copy-and-paste')}</option>
+            </select>
+          </label>
+          {draft.dictationOutputAction !== 'copy' && (
+            <p className="model-hint">
+              Paste requires Accessibility permission. If paste fails, the transcript stays in clipboard.
+            </p>
+          )}
           {dictationOutputStatus && (
             <div className="hotkey-event-box">
               <span className="hotkey-event-label">Output</span>
@@ -769,6 +795,7 @@ function SettingsView({
           </div>
           {dictationState.lastError && <p className="error-text">{dictationState.lastError}</p>}
         </article>
+        </div>
         )}
 
         {activeSettingsTab === 'subtitle' && (
@@ -862,28 +889,6 @@ function SettingsView({
           }}>
             {overlaySuppressedLocal ? '顯示字幕' : '隱藏字幕'}
           </button>
-        </article>
-        )}
-
-        {activeSettingsTab === 'dictation' && (
-        <article className="panel">
-          <h2>Dictation Output</h2>
-          <label>
-            Dictation output
-            <select
-              value={draft.dictationOutputAction}
-              onChange={(event) => setDraft({ ...draft, dictationOutputAction: event.target.value as DictationOutputAction })}
-            >
-              <option value="copy">{getDictationOutputActionLabel('copy')}</option>
-              <option value="paste">{getDictationOutputActionLabel('paste')}</option>
-              <option value="copy-and-paste">{getDictationOutputActionLabel('copy-and-paste')}</option>
-            </select>
-          </label>
-          {draft.dictationOutputAction !== 'copy' && (
-            <p className="model-hint">
-              Paste currently requires Accessibility permission. If paste fails, the transcript stays in clipboard.
-            </p>
-          )}
         </article>
         )}
 

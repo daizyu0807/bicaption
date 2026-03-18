@@ -143,6 +143,10 @@ select {
   min-height: 0;
 }
 
+.panel-compact {
+  gap: 6px;
+}
+
 h2 {
   font-size: 0.78rem;
   text-transform: uppercase;
@@ -214,6 +218,18 @@ button:disabled {
 
 
 .form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.dictation-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 6px;
+}
+
+.dictation-summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
@@ -418,8 +434,8 @@ button:disabled {
 
 .hotkey-permissions {
   display: grid;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 6px 8px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -429,7 +445,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   font-size: 0.76rem;
 }
 
@@ -449,7 +465,7 @@ button:disabled {
 
 .hotkey-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .hotkey-actions button {
@@ -458,8 +474,8 @@ button:disabled {
 
 .hotkey-event-box {
   display: grid;
-  gap: 4px;
-  padding: 8px 10px;
+  gap: 2px;
+  padding: 6px 8px;
   border-radius: 8px;
   background: rgba(8, 12, 18, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -496,5 +512,11 @@ button:disabled {
 @media (max-width: 900px) {
   .topbar {
     flex-wrap: wrap;
+  }
+
+  .dictation-grid,
+  .dictation-summary-grid,
+  .form-row-2 {
+    grid-template-columns: 1fr;
   }
 }
