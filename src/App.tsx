@@ -777,22 +777,7 @@ function SettingsView({
               </span>
             </div>
           )}
-          <div className="hotkey-actions">
-            <button
-              className="secondary"
-              disabled={!modelsReady || isDictating}
-              onClick={() => void startManualDictation()}
-            >
-              Start Dictation
-            </button>
-            <button
-              className="secondary"
-              disabled={!isDictating}
-              onClick={() => window.app.stopSession()}
-            >
-              Stop Dictation
-            </button>
-          </div>
+          <p className="model-hint">按住快捷鍵開始語音輸入，放開後結束並輸出文字。</p>
           {dictationState.lastError && <p className="error-text">{dictationState.lastError}</p>}
         </article>
         </div>
