@@ -20,19 +20,29 @@ function isOverlayRoute() {
 
 function OverlayView({
   viewState,
+  dictationState,
   settings,
 }: {
   viewState: ReturnType<typeof useCaptionState>;
+  dictationState: ReturnType<typeof useDictationState>;
   settings: AppSettings;
 }) {
   const overlayStyle = applySettingsOverlayStyle(settings);
   const hasVisibleCaptions = viewState.captions.length > 0 || Boolean(viewState.partial);
-  const shouldShowShell = hasVisibleCaptions || viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
+  const isDictationActive = ['connecting', 'streaming'].includes(dictationState.sessionState)
+    || ['recording', 'capturing', 'processing'].includes(dictationState.dictationState);
+  const [showDictationResult, setShowDictationResult] = useState(false);
+  const shouldShowDictationPrompt = isDictationActive || showDictationResult;
+  const shouldShowShell = hasVisibleCaptions
+    || viewState.sessionState === 'streaming'
+    || viewState.sessionState === 'connecting'
+    || shouldShowDictationPrompt;
   const translationEnabled = isTranslationEnabled(settings);
   const stackRef = useRef<HTMLElement | null>(null);
   const userScrolledUp = useRef(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; winX: number; winY: number } | null>(null);
+  const dictationPrompt = getDictationPrompt(dictationState, showDictationResult);
 
   useEffect(() => {
     const el = stackRef.current;
@@ -53,6 +63,15 @@ function OverlayView({
     }
     stackRef.current.scrollTop = stackRef.current.scrollHeight;
   }, [viewState.captions, viewState.partial]);
+
+  useEffect(() => {
+    if (!dictationState.finalText) {
+      return;
+    }
+    setShowDictationResult(true);
+    const timeoutId = window.setTimeout(() => setShowDictationResult(false), 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [dictationState.finalText]);
 
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
@@ -101,6 +120,15 @@ function OverlayView({
       </header>
       {!isCollapsed && (
         <section className="overlay-body" ref={stackRef}>
+          {dictationPrompt && (
+            <div className={`dictation-prompt dictation-prompt-${dictationPrompt.tone} no-drag`}>
+              <span className="dictation-prompt-dot" aria-hidden="true" />
+              <div className="dictation-prompt-copy">
+                <p className="dictation-prompt-title">{dictationPrompt.title}</p>
+                <p className="dictation-prompt-text">{dictationPrompt.detail}</p>
+              </div>
+            </div>
+          )}
           {viewState.captions.map((caption) => (
             <div key={caption.segmentId} className="caption-pair no-drag">
               <p className="caption-line">{caption.sourceText}</p>
@@ -146,6 +174,65 @@ function useCaptionState() {
   }, []);
 
   return viewState;
+}
+
+function useDictationState() {
+  const [viewState, setViewState] = useState(initialDictationViewState);
+
+  useEffect(() => {
+    if (!window.app) {
+      setViewState((current) => ({
+        ...current,
+        sessionState: 'error',
+        lastError: 'Preload API is unavailable.',
+      }));
+      return;
+    }
+
+    return window.app.subscribe('sidecar:event', (payload) => {
+      const event = payload as SidecarEvent;
+      startTransition(() => {
+        setViewState((current) => reduceDictationEvent(current, event));
+      });
+    });
+  }, []);
+
+  return viewState;
+}
+
+function getDictationPrompt(
+  state: ReturnType<typeof useDictationState>,
+  showResult: boolean,
+): { tone: 'live' | 'processing' | 'done'; title: string; detail: string } | null {
+  if (state.lastError) {
+    return {
+      tone: 'processing',
+      title: '語音輸入中斷',
+      detail: state.lastError,
+    };
+  }
+  if (state.dictationState === 'recording') {
+    return {
+      tone: 'live',
+      title: '正在聽你說',
+      detail: '按住快捷鍵繼續說話，放開後送出辨識。',
+    };
+  }
+  if (state.dictationState === 'capturing' || state.dictationState === 'processing' || state.sessionState === 'connecting') {
+    return {
+      tone: 'processing',
+      title: '正在整理語音',
+      detail: '放開後會自動完成辨識並輸出文字。',
+    };
+  }
+  if (showResult && state.finalText) {
+    return {
+      tone: 'done',
+      title: '已完成語音輸入',
+      detail: state.finalText,
+    };
+  }
+  return null;
 }
 
 function isTranslationEnabled(settings: AppSettings): boolean {
@@ -760,6 +847,7 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const captionState = useCaptionState();
+  const dictationState = useDictationState();
   const overlayRoute = isOverlayRoute();
 
   useEffect(() => {
@@ -818,7 +906,7 @@ export function App() {
   }
 
   if (overlayRoute) {
-    return <OverlayView viewState={captionState} settings={settings} />;
+    return <OverlayView viewState={captionState} dictationState={dictationState} settings={settings} />;
   }
 
   return <SettingsView settings={settings} devices={devices} viewState={captionState} modelStatus={modelStatus} onSave={onSave} />;

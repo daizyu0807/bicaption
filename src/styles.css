@@ -329,6 +329,67 @@ button:disabled {
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
+.dictation-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 20, 0.88);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.dictation-prompt-live {
+  border-color: rgba(255, 179, 108, 0.38);
+}
+
+.dictation-prompt-processing {
+  border-color: rgba(132, 193, 255, 0.28);
+}
+
+.dictation-prompt-done {
+  border-color: rgba(140, 217, 140, 0.32);
+}
+
+.dictation-prompt-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: #ffb36c;
+  box-shadow: 0 0 0 6px rgba(255, 179, 108, 0.14);
+}
+
+.dictation-prompt-processing .dictation-prompt-dot {
+  background: #84c1ff;
+  box-shadow: 0 0 0 6px rgba(132, 193, 255, 0.12);
+}
+
+.dictation-prompt-done .dictation-prompt-dot {
+  background: #8cd98c;
+  box-shadow: 0 0 0 6px rgba(140, 217, 140, 0.12);
+}
+
+.dictation-prompt-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.dictation-prompt-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #f8f2e9;
+}
+
+.dictation-prompt-text {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(246, 239, 227, 0.72);
+  word-break: break-word;
+}
+
 .overlay-window-controls {
   display: flex;
   align-items: center;
