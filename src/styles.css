@@ -353,6 +353,7 @@ button:disabled {
 }
 
 .dictation-prompt-dot {
+  position: relative;
   width: 10px;
   height: 10px;
   border-radius: 999px;
@@ -377,6 +378,18 @@ button:disabled {
   gap: 2px;
 }
 
+.dictation-prompt-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 179, 108, 0.34);
+  animation: dictation-pulse 1.8s ease-out infinite;
+}
+
+.dictation-prompt-ring-b {
+  animation-delay: 0.9s;
+}
+
 .dictation-prompt-title {
   font-size: 0.9rem;
   font-weight: 700;
@@ -388,6 +401,44 @@ button:disabled {
   line-height: 1.45;
   color: rgba(246, 239, 227, 0.72);
   word-break: break-word;
+}
+
+.dictation-prompt-progress {
+  margin-top: 4px;
+  width: min(220px, 100%);
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dictation-prompt-progress-bar {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(132, 193, 255, 0.2), #84c1ff, rgba(132, 193, 255, 0.2));
+  animation: dictation-progress 1s linear infinite;
+}
+
+@keyframes dictation-pulse {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+@keyframes dictation-progress {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
 }
 
 .overlay-window-controls {

@@ -31,6 +31,7 @@ let sessionTransitionPromise: Promise<void> | null = null;
 let hotkeyListenerMode: 'dictation' | 'test' | 'idle' = 'idle';
 let pendingDictationStop = false;
 let pendingDictationPasteTarget: { appName: string; windowTitle: string | null } | null = null;
+let dictationOverlayHideTimeout: NodeJS.Timeout | null = null;
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
@@ -266,6 +267,7 @@ function runSessionTransition(task: () => Promise<void>) {
 }
 
 async function startDictationFromHotkey() {
+  showDictationOverlay();
   await runSessionTransition(async () => {
     if (activeSessionMode === 'dictation') {
       return;
@@ -320,6 +322,32 @@ function setOverlayVisible(visible: boolean) {
       overlayWindow.hide();
     }
   }
+}
+
+function clearDictationOverlayHideTimeout() {
+  if (dictationOverlayHideTimeout) {
+    clearTimeout(dictationOverlayHideTimeout);
+    dictationOverlayHideTimeout = null;
+  }
+}
+
+function showDictationOverlay() {
+  clearDictationOverlayHideTimeout();
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    createOverlayWindow();
+  }
+  overlayWindow?.showInactive();
+}
+
+function hideDictationOverlaySoon(delayMs = 1800) {
+  clearDictationOverlayHideTimeout();
+  dictationOverlayHideTimeout = setTimeout(() => {
+    dictationOverlayHideTimeout = null;
+    if (activeSessionMode === 'subtitle') {
+      return;
+    }
+    overlayWindow?.hide();
+  }, delayMs);
 }
 
 function createSettingsWindow() {
@@ -420,8 +448,16 @@ function bindBridge() {
     }
     sendToWindows('sidecar:event', event);
   });
-  bridge.on('dictation_state', forwardEvent);
-  bridge.on('dictation_final', handleDictationFinal);
+  bridge.on('dictation_state', (event: SidecarEvent) => {
+    if (event.type === 'dictation_state') {
+      showDictationOverlay();
+    }
+    forwardEvent(event);
+  });
+  bridge.on('dictation_final', (event: SidecarEvent) => {
+    handleDictationFinal(event);
+    hideDictationOverlaySoon();
+  });
   bridge.on('session_stopped_ack', (event: SidecarEvent) => {
     if (event.type === 'session_stopped_ack') {
       clearActiveSession(event.sessionId);
@@ -450,6 +486,7 @@ function forwardHotkeyEvent(event: DictationHotkeyEvent) {
     return;
   }
   if (event.type === 'hotkey_down') {
+    showDictationOverlay();
     void startDictationFromHotkey();
   } else if (event.type === 'hotkey_up') {
     void stopDictationFromHotkey();

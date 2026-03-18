@@ -122,10 +122,22 @@ function OverlayView({
         <section className="overlay-body" ref={stackRef}>
           {dictationPrompt && (
             <div className={`dictation-prompt dictation-prompt-${dictationPrompt.tone} no-drag`}>
-              <span className="dictation-prompt-dot" aria-hidden="true" />
+              <span className="dictation-prompt-dot" aria-hidden="true">
+                {dictationPrompt.tone === 'live' && (
+                  <>
+                    <span className="dictation-prompt-ring dictation-prompt-ring-a" />
+                    <span className="dictation-prompt-ring dictation-prompt-ring-b" />
+                  </>
+                )}
+              </span>
               <div className="dictation-prompt-copy">
                 <p className="dictation-prompt-title">{dictationPrompt.title}</p>
                 <p className="dictation-prompt-text">{dictationPrompt.detail}</p>
+                {dictationPrompt.tone === 'processing' && (
+                  <span className="dictation-prompt-progress" aria-hidden="true">
+                    <span className="dictation-prompt-progress-bar" />
+                  </span>
+                )}
               </div>
             </div>
           )}
