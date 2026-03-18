@@ -2,7 +2,7 @@ import Store from 'electron-store';
 import type { AppSettings } from './types.js';
 
 export const defaultSettings: AppSettings = {
-  deviceId: 'blackhole',
+  deviceId: '',
   outputDeviceId: '',
   dictationHotkey: {
     keyCode: 59,
