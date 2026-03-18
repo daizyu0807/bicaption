@@ -73,6 +73,7 @@
   - 已補 `dictationOutputAction` 設定欄位。
   - `paste` / `copy-and-paste` 已接上保守版 paste 路徑；若 Accessibility 不可用或貼上失敗，會保留 clipboard 並回報 fallback。
   - 已補前景 app 一致性檢查；若 keyup 後前景 app 已改變，會降級為 clipboard fallback。
+  - 已進一步細化為 app + window title 快照；同 app 換視窗時也會降級 fallback。
 
 ## Interrupted Changes
 
@@ -92,7 +93,7 @@
 
 ## Next Actions
 
-1. 視需要把焦點比對從 app 名稱細化到 window 層級。
+1. 視需要補更多 paste 相容性驗證，例如不同 app 的 window title 取值差異。
 2. 視需要補更完整的 hotkey 衝突名單與禁止儲存策略。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 

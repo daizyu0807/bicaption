@@ -30,7 +30,7 @@ let activeSessionId: string | null = null;
 let sessionTransitionPromise: Promise<void> | null = null;
 let hotkeyListenerMode: 'dictation' | 'test' | 'idle' = 'idle';
 let pendingDictationStop = false;
-let pendingDictationPasteTarget: { appName: string } | null = null;
+let pendingDictationPasteTarget: { appName: string; windowTitle: string | null } | null = null;
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
@@ -114,15 +114,39 @@ function handleDictationFinal(event: SidecarEvent) {
   sendToWindows('sidecar:event', event);
 }
 
-function getFrontmostAppName() {
+function getFrontmostFocusSnapshot() {
   try {
-    return execFileSync('osascript', [
+    const output = execFileSync('osascript', [
       '-e',
-      'tell application "System Events" to get name of first application process whose frontmost is true',
+      'tell application "System Events"',
+      '-e',
+      'set frontApp to first application process whose frontmost is true',
+      '-e',
+      'set appName to name of frontApp',
+      '-e',
+      'set windowTitle to ""',
+      '-e',
+      'try',
+      '-e',
+      'set windowTitle to name of front window of frontApp',
+      '-e',
+      'end try',
+      '-e',
+      'return appName & linefeed & windowTitle',
+      '-e',
+      'end tell',
     ], {
       cwd: getSpawnCwd(),
       encoding: 'utf-8',
-    }).trim();
+    }).trimEnd();
+    const [appName, windowTitle] = output.split('\n');
+    if (!appName) {
+      return null;
+    }
+    return {
+      appName,
+      windowTitle: windowTitle || null,
+    };
   } catch {
     return null;
   }
@@ -132,14 +156,22 @@ function getPasteFallbackDetail() {
   if (!pendingDictationPasteTarget) {
     return 'Paste unavailable, kept clipboard copy.';
   }
-  const currentApp = getFrontmostAppName();
-  if (currentApp && currentApp !== pendingDictationPasteTarget.appName) {
-    return `Focus changed from ${pendingDictationPasteTarget.appName} to ${currentApp}, kept clipboard copy.`;
+  const currentFocus = getFrontmostFocusSnapshot();
+  if (currentFocus && currentFocus.appName !== pendingDictationPasteTarget.appName) {
+    return `Focus changed from ${pendingDictationPasteTarget.appName} to ${currentFocus.appName}, kept clipboard copy.`;
+  }
+  if (
+    currentFocus
+    && pendingDictationPasteTarget.windowTitle
+    && currentFocus.windowTitle
+    && currentFocus.windowTitle !== pendingDictationPasteTarget.windowTitle
+  ) {
+    return `Window changed from ${pendingDictationPasteTarget.windowTitle} to ${currentFocus.windowTitle}, kept clipboard copy.`;
   }
   return 'Paste unavailable, kept clipboard copy.';
 }
 
-function tryPasteClipboard(action: DictationOutputAction, expectedTarget: { appName: string } | null) {
+function tryPasteClipboard(action: DictationOutputAction, expectedTarget: { appName: string; windowTitle: string | null } | null) {
   if (action === 'copy') {
     return false;
   }
@@ -148,8 +180,15 @@ function tryPasteClipboard(action: DictationOutputAction, expectedTarget: { appN
     return false;
   }
   if (expectedTarget) {
-    const currentApp = getFrontmostAppName();
-    if (!currentApp || currentApp !== expectedTarget.appName) {
+    const currentFocus = getFrontmostFocusSnapshot();
+    if (!currentFocus || currentFocus.appName !== expectedTarget.appName) {
+      return false;
+    }
+    if (
+      expectedTarget.windowTitle
+      && currentFocus.windowTitle
+      && currentFocus.windowTitle !== expectedTarget.windowTitle
+    ) {
       return false;
     }
   }
@@ -251,8 +290,8 @@ async function stopDictationFromHotkey() {
     pendingDictationStop = true;
     return;
   }
-  const currentApp = getFrontmostAppName();
-  pendingDictationPasteTarget = currentApp ? { appName: currentApp } : null;
+  const currentFocus = getFrontmostFocusSnapshot();
+  pendingDictationPasteTarget = currentFocus;
   await runSessionTransition(async () => {
     if (activeSessionMode !== 'dictation') {
       return;
