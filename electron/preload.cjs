@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('app', {
   checkAccessibilityPermission: () => ipcRenderer.invoke('permissions:check-accessibility'),
   checkInputMonitoringPermission: () => ipcRenderer.invoke('permissions:check-input-monitoring'),
   requestInputMonitoringPermission: () => ipcRenderer.invoke('permissions:request-input-monitoring'),
+  openInputMonitoringSettings: () => ipcRenderer.invoke('permissions:open-input-monitoring'),
   testDictationHotkey: (binding) => ipcRenderer.invoke('dictation:test-hotkey', binding),
   stopDictationHotkeyTest: () => ipcRenderer.invoke('dictation:stop-hotkey-test'),
   subscribe: (eventName, handler) => on(eventName, handler),

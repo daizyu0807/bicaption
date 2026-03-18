@@ -33,6 +33,7 @@ declare global {
       checkAccessibilityPermission(): Promise<{ trusted: boolean; status: string }>;
       checkInputMonitoringPermission(): Promise<{ trusted: boolean; available: boolean; detail?: string }>;
       requestInputMonitoringPermission(): Promise<{ trusted: boolean; available: boolean; detail?: string }>;
+      openInputMonitoringSettings(): Promise<{ ok: boolean }>;
       testDictationHotkey(binding: DictationHotkeyBinding): Promise<{ ok: boolean }>;
       stopDictationHotkeyTest(): Promise<{ ok: boolean }>;
       subscribe<K extends keyof SubscribeMap>(
