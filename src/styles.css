@@ -633,9 +633,9 @@ button:disabled {
 }
 
 .hotkey-permission-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   font-size: 0.76rem;
 }
@@ -652,6 +652,11 @@ button:disabled {
 .hotkey-permission-missing {
   color: #ffb36c;
   font-weight: 700;
+}
+
+.hotkey-permission-action-spacer {
+  width: 56px;
+  height: 1px;
 }
 
 .hotkey-actions {

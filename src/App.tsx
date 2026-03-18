@@ -680,6 +680,7 @@ function SettingsView({
               <span className={accessibilityPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
                 {getPermissionLabel(accessibilityPermission, 'accessibility')}
               </span>
+              <span className="hotkey-permission-action-spacer" aria-hidden="true" />
             </div>
             <div className="hotkey-permission-row">
               <span className="hotkey-permission-label">Input Monitoring</span>
