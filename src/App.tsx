@@ -2,14 +2,17 @@ import { startTransition, useEffect, useRef, useState } from 'react';
 import type {
   AppSettings,
   CaptionConfig,
+  DictationFinalEvent,
   DictationHotkeyBinding,
   DictationHotkeyEvent,
+  DictationStateEvent,
   ModelDownloadProgress,
   ModelStatus,
   SessionMode,
   SidecarEvent,
 } from '../electron/types.js';
 import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from './caption-state.js';
+import { initialDictationViewState, reduceDictationEvent } from './dictation-state.js';
 
 function isOverlayRoute() {
   return window.location.hash === '#overlay';
@@ -145,6 +148,30 @@ function useCaptionState() {
   return viewState;
 }
 
+function useDictationState() {
+  const [viewState, setViewState] = useState(initialDictationViewState);
+
+  useEffect(() => {
+    if (!window.app) {
+      setViewState((current) => ({
+        ...current,
+        sessionState: 'error',
+        lastError: 'Preload API is unavailable.',
+      }));
+      return;
+    }
+
+    return window.app.subscribe('sidecar:event', (payload) => {
+      const event = payload as SidecarEvent;
+      startTransition(() => {
+        setViewState((current) => reduceDictationEvent(current, event));
+      });
+    });
+  }, []);
+
+  return viewState;
+}
+
 function isTranslationEnabled(settings: AppSettings): boolean {
   if (settings.translateModel === 'disabled') return false;
   return settings.sourceLang === 'auto' || settings.targetLang !== settings.sourceLang;
@@ -261,16 +288,42 @@ function getPermissionLabel(status: { trusted: boolean } | { available: boolean;
   return kind === 'accessibility' ? 'Denied' : 'Not granted';
 }
 
+function getDictationStateLabel(event: DictationStateEvent | null, viewState: ReturnType<typeof useDictationState>) {
+  if (event) {
+    return `${event.state}${event.detail ? ` - ${event.detail}` : ''}`;
+  }
+  if (viewState.lastError) {
+    return `error - ${viewState.lastError}`;
+  }
+  return `${viewState.dictationState}${viewState.detail ? ` - ${viewState.detail}` : ''}`;
+}
+
+function getDictationFinalLabel(event: DictationFinalEvent | null, viewState: ReturnType<typeof useDictationState>) {
+  const text = event?.text || viewState.finalText;
+  if (!text) {
+    return 'No dictation transcript yet.';
+  }
+  const chunkCount = event?.chunkCount ?? viewState.finalChunkCount;
+  const latencyMs = event?.latencyMs ?? viewState.finalLatencyMs;
+  const meta = [
+    typeof chunkCount === 'number' ? `${chunkCount} chunk${chunkCount === 1 ? '' : 's'}` : null,
+    typeof latencyMs === 'number' ? `${latencyMs}ms` : null,
+  ].filter(Boolean).join(' · ');
+  return meta ? `${text} (${meta})` : text;
+}
+
 function SettingsView({
   settings,
   devices,
   viewState,
+  dictationState,
   modelStatus,
   onSave,
 }: {
   settings: AppSettings;
   devices: Array<{ id: string; label: string; kind: string }>;
   viewState: ReturnType<typeof useCaptionState>;
+  dictationState: ReturnType<typeof useDictationState>;
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
@@ -284,6 +337,8 @@ function SettingsView({
   const [accessibilityPermission, setAccessibilityPermission] = useState<{ trusted: boolean; status: string } | null>(null);
   const [inputMonitoringPermission, setInputMonitoringPermission] = useState<{ trusted: boolean; available: boolean; detail?: string } | null>(null);
   const [hotkeyEvent, setHotkeyEvent] = useState<DictationHotkeyEvent | null>(null);
+  const [dictationEvent, setDictationEvent] = useState<DictationStateEvent | null>(null);
+  const [dictationFinalEvent, setDictationFinalEvent] = useState<DictationFinalEvent | null>(null);
   const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
   const [isHotkeyTestRunning, setIsHotkeyTestRunning] = useState(false);
   const isStreaming = viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
@@ -353,6 +408,23 @@ function SettingsView({
         setIsHotkeyTestRunning(false);
       } else if (event.type === 'error') {
         setHotkeyTestError(event.message ?? 'Unknown hotkey error');
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    return window.app.subscribe('sidecar:event', (payload) => {
+      const event = payload as SidecarEvent;
+      if (event.mode !== 'dictation') {
+        return;
+      }
+      if (event.type === 'dictation_state') {
+        setDictationEvent(event);
+      } else if (event.type === 'dictation_final') {
+        setDictationFinalEvent(event);
+      } else if (event.type === 'session_state' && event.state === 'connecting') {
+        setDictationEvent(null);
+        setDictationFinalEvent(null);
       }
     });
   }, []);
@@ -461,6 +533,20 @@ function SettingsView({
             <span className="hotkey-event-value">{getDictationHotkeyEventLabel(hotkeyEvent)}</span>
           </div>
           {hotkeyTestError && <p className="error-text">{hotkeyTestError}</p>}
+        </article>
+
+        <article className="panel">
+          <h2>Dictation Session</h2>
+          <p className="model-hint">Session: {dictationState.sessionState}</p>
+          <div className="hotkey-event-box">
+            <span className="hotkey-event-label">Latest state</span>
+            <span className="hotkey-event-value">{getDictationStateLabel(dictationEvent, dictationState)}</span>
+          </div>
+          <div className="hotkey-event-box">
+            <span className="hotkey-event-label">Latest transcript</span>
+            <span className="hotkey-event-value">{getDictationFinalLabel(dictationFinalEvent, dictationState)}</span>
+          </div>
+          {dictationState.lastError && <p className="error-text">{dictationState.lastError}</p>}
         </article>
 
         <article className="panel">
@@ -613,6 +699,7 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const captionState = useCaptionState();
+  const dictationState = useDictationState();
   const overlayRoute = isOverlayRoute();
 
   useEffect(() => {
@@ -669,5 +756,5 @@ export function App() {
     return <OverlayView viewState={captionState} settings={settings} />;
   }
 
-  return <SettingsView settings={settings} devices={devices} viewState={captionState} modelStatus={modelStatus} onSave={onSave} />;
+  return <SettingsView settings={settings} devices={devices} viewState={captionState} dictationState={dictationState} modelStatus={modelStatus} onSave={onSave} />;
 }

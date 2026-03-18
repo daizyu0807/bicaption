@@ -52,8 +52,9 @@
 - `Phase 2.3 Settings Migration`
   - 尚未開始
 - `Phase 2.4 Dictation UI State`
-  - 尚未開始
-  - 目前只有 hotkey 測試面板，還沒有獨立 dictation state reducer / UI 狀態機。
+  - 已開始
+  - renderer 已有獨立 dictation reducer 與最小觀察面板，不再和 subtitle caption reducer 共用狀態。
+  - 目前仍缺正式的 dictation mode 切換控制與完整 UX。
 - `Phase 3.1 Sidecar Dictation Session`
   - 進行中
   - Python sidecar 已開始分流 `mode=dictation`，並在 finalize 前緩存 transcript。
@@ -77,8 +78,8 @@
 
 ## Next Actions
 
-1. 先補 `Phase 2.4 Dictation UI State`，讓 renderer 真正消費 `dictation_state` / `dictation_final`。
-2. 再補 `Phase 5.1 Clipboard Output` 的 main process 消費流程。
+1. 先補 `Phase 5.1 Clipboard Output` 的 main process 消費流程。
+2. 再補真正的 dictation start/stop UX，讓 hotkey / session / renderer 狀態串起來。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 
 ## Verification Notes
