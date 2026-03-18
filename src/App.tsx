@@ -6,6 +6,7 @@ import type {
   DictationHotkeyBinding,
   DictationHotkeyEvent,
   DictationOutputAction,
+  DictationOutputStatusEvent,
   DictationStateEvent,
   ModelDownloadProgress,
   ModelStatus,
@@ -351,13 +352,14 @@ function SettingsView({
   const [hotkeyEvent, setHotkeyEvent] = useState<DictationHotkeyEvent | null>(null);
   const [dictationEvent, setDictationEvent] = useState<DictationStateEvent | null>(null);
   const [dictationFinalEvent, setDictationFinalEvent] = useState<DictationFinalEvent | null>(null);
+  const [dictationOutputStatus, setDictationOutputStatus] = useState<DictationOutputStatusEvent | null>(null);
   const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
   const [isHotkeyTestRunning, setIsHotkeyTestRunning] = useState(false);
   const isStreaming = viewState.sessionState === 'streaming' || viewState.sessionState === 'connecting';
   const isDictating = ['connecting', 'streaming'].includes(dictationState.sessionState)
     || ['recording', 'capturing', 'processing'].includes(dictationState.dictationState);
   const translationOn = isTranslationEnabled(draft);
-  const hotkeyBinding: DictationHotkeyBinding = { keyCode: 49, modifiers: ['cmd', 'shift'] };
+  const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
   const modelReadyMap: Record<string, boolean> = {
     sensevoice: localModelStatus?.sensevoice ?? false,
     'apple-stt': true,  // No model download needed — uses macOS built-in
@@ -439,7 +441,14 @@ function SettingsView({
       } else if (event.type === 'session_state' && event.state === 'connecting') {
         setDictationEvent(null);
         setDictationFinalEvent(null);
+        setDictationOutputStatus(null);
       }
+    });
+  }, []);
+
+  useEffect(() => {
+    return window.app.subscribe('dictation:output-status', (payload) => {
+      setDictationOutputStatus(payload as DictationOutputStatusEvent);
     });
   }, []);
 
@@ -572,6 +581,15 @@ function SettingsView({
             <span className="hotkey-event-label">Latest transcript</span>
             <span className="hotkey-event-value">{getDictationFinalLabel(dictationFinalEvent, dictationState)}</span>
           </div>
+          {dictationOutputStatus && (
+            <div className="hotkey-event-box">
+              <span className="hotkey-event-label">Output</span>
+              <span className="hotkey-event-value">
+                {dictationOutputStatus.status}
+                {dictationOutputStatus.detail ? ` - ${dictationOutputStatus.detail}` : ''}
+              </span>
+            </div>
+          )}
           <div className="hotkey-actions">
             <button
               className="secondary"
@@ -692,7 +710,7 @@ function SettingsView({
           </label>
           {draft.dictationOutputAction !== 'copy' && (
             <p className="model-hint">
-              Paste actions currently fall back to clipboard copy until the paste safety gate is implemented.
+              Paste currently requires Accessibility permission. If paste fails, the transcript stays in clipboard.
             </p>
           )}
           <div className="form-row-2">

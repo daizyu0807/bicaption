@@ -85,6 +85,13 @@ export interface DictationFinalEvent extends SessionScopedEvent {
   latencyMs: number;
 }
 
+export interface DictationOutputStatusEvent {
+  type: 'dictation_output_status';
+  action: DictationOutputAction;
+  status: 'copied' | 'pasted' | 'fallback';
+  detail?: string;
+}
+
 export interface SessionStoppedAckEvent extends SessionScopedEvent {
   type: 'session_stopped_ack';
 }
@@ -118,6 +125,7 @@ export interface CaptionRecord {
 export interface AppSettings {
   deviceId: string;
   outputDeviceId: string;
+  dictationHotkey: DictationHotkeyBinding;
   sourceLang: string;
   targetLang: string;
   sttModel: string;

@@ -9,7 +9,7 @@ import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
 import { getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
-import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -30,11 +30,6 @@ let activeSessionId: string | null = null;
 let sessionTransitionPromise: Promise<void> | null = null;
 let hotkeyListenerMode: 'dictation' | 'test' | 'idle' = 'idle';
 let pendingDictationStop = false;
-
-const defaultDictationHotkeyBinding: DictationHotkeyBinding = {
-  keyCode: 49,
-  modifiers: ['cmd', 'shift'],
-};
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
@@ -95,13 +90,48 @@ function handleDictationFinal(event: SidecarEvent) {
     return;
   }
   const settings = loadSettings();
-  const shouldCopy = settings.dictationOutputAction === 'copy'
-    || settings.dictationOutputAction === 'paste'
-    || settings.dictationOutputAction === 'copy-and-paste';
-  if (shouldCopy && event.text.trim()) {
+  const outputAction = settings.dictationOutputAction;
+  if (event.text.trim()) {
     clipboard.writeText(event.text);
+    if (outputAction === 'copy') {
+      sendToWindows('dictation:output-status', {
+        type: 'dictation_output_status',
+        action: outputAction,
+        status: 'copied',
+      } satisfies DictationOutputStatusEvent);
+    } else {
+      const pasted = tryPasteClipboard(outputAction);
+      sendToWindows('dictation:output-status', {
+        type: 'dictation_output_status',
+        action: outputAction,
+        status: pasted ? 'pasted' : 'fallback',
+        detail: pasted ? 'Pasted into foreground app.' : 'Paste unavailable, kept clipboard copy.',
+      } satisfies DictationOutputStatusEvent);
+    }
   }
   sendToWindows('sidecar:event', event);
+}
+
+function tryPasteClipboard(action: DictationOutputAction) {
+  if (action === 'copy') {
+    return false;
+  }
+  const accessibility = checkAccessibilityPermission();
+  if (!accessibility.trusted) {
+    return false;
+  }
+  try {
+    execFileSync('osascript', [
+      '-e',
+      'tell application "System Events" to keystroke "v" using command down',
+    ], {
+      cwd: getSpawnCwd(),
+      encoding: 'utf-8',
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionConfig {
@@ -197,7 +227,7 @@ async function stopDictationFromHotkey() {
 
 function restartDictationHotkeyListener() {
   hotkeyListenerMode = 'dictation';
-  nativeHotkeyBridge.startListening(defaultDictationHotkeyBinding);
+  nativeHotkeyBridge.startListening(loadSettings().dictationHotkey);
 }
 
 function setOverlayVisible(visible: boolean) {
@@ -404,6 +434,9 @@ app.whenReady().then(() => {
   ipcMain.handle('settings:load', () => loadSettings());
   ipcMain.handle('settings:save', (_event, partial) => {
     const settings = saveSettings(partial);
+    if (hotkeyListenerMode !== 'test') {
+      restartDictationHotkeyListener();
+    }
     sendToWindows('settings:changed', settings);
     return settings;
   });

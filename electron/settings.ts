@@ -4,6 +4,10 @@ import type { AppSettings } from './types.js';
 export const defaultSettings: AppSettings = {
   deviceId: 'blackhole',
   outputDeviceId: '',
+  dictationHotkey: {
+    keyCode: 49,
+    modifiers: ['cmd', 'shift'],
+  },
   sourceLang: 'zh',
   targetLang: 'zh-TW',
   sttModel: 'apple-stt',

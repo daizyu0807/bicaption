@@ -23,6 +23,7 @@
     - [native-hotkey.ts](/Users/davedai/Project/tools/realtime-bilingual-subtitles/electron/native-hotkey.ts)
     - [build-global-hotkey.sh](/Users/davedai/Project/tools/realtime-bilingual-subtitles/scripts/build-global-hotkey.sh)
   - Electron main 已開始將 `hotkey_down` / `hotkey_up` 接到實際 dictation start/stop 流程。
+  - dictation hotkey binding 已改由 settings 驅動，不再只靠 main process 內建常數。
 - `Phase 0.2 權限模型確認`
   - 部分完成
   - 已有 Accessibility / Input Monitoring 檢查 IPC 與 UI 測試面板，但尚未完成正式 fallback 流程。
@@ -68,7 +69,7 @@
   - 已開始
   - Electron main 已在收到 `dictation_final` 時將文字寫入 clipboard。
   - 已補 `dictationOutputAction` 設定欄位。
-  - `paste` / `copy-and-paste` 目前仍明確降級為 clipboard fallback，尚未接真正 paste 流程。
+  - `paste` / `copy-and-paste` 已接上保守版 paste 路徑；若 Accessibility 不可用或貼上失敗，會保留 clipboard 並回報 fallback。
 
 ## Interrupted Changes
 
@@ -88,8 +89,8 @@
 
 ## Next Actions
 
-1. 把 `paste` / `copy-and-paste` 接成真正的 paste 流程與安全降級。
-2. 把 dictation hotkey binding 從硬編碼改成 settings 驅動。
+1. 補焦點一致性檢查，避免 paste 到錯誤前景 app。
+2. 補 dictation hotkey 的正式設定 UI，而不只是沿用 settings schema。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 
 ## Verification Notes

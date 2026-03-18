@@ -1,8 +1,9 @@
-import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, ModelDownloadProgress, ModelStatus, OverlayBounds, SidecarEvent } from '../electron/types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputStatusEvent, ModelDownloadProgress, ModelStatus, OverlayBounds, SidecarEvent } from '../electron/types.js';
 
 type SubscribeMap = {
   'sidecar:event': SidecarEvent;
   'dictation:hotkey-event': DictationHotkeyEvent;
+  'dictation:output-status': DictationOutputStatusEvent;
   'settings:changed': AppSettings;
   'models:progress': ModelDownloadProgress;
   'models:done': ModelStatus;
