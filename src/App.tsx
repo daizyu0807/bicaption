@@ -15,6 +15,7 @@ import type {
 } from '../electron/types.js';
 import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from './caption-state.js';
 import { initialDictationViewState, reduceDictationEvent } from './dictation-state.js';
+import { pickPreferredInputDevice } from './device-preferences.js';
 import { getDictationHotkeyLabel, isModifierOnlyHotkey, validateDictationHotkey } from './dictation-hotkey.js';
 
 function isOverlayRoute() {
@@ -979,10 +980,10 @@ export function App() {
       const inputDeviceIds = new Set(
         loadedDevices.filter((d) => d.kind === 'input' || d.kind === 'duplex').map((d) => d.id),
       );
-      if (loadedSettings.deviceId && !inputDeviceIds.has(loadedSettings.deviceId)) {
-        const first = loadedDevices.find((d) => d.kind === 'input' || d.kind === 'duplex');
-        if (first) {
-          loadedSettings = { ...loadedSettings, deviceId: first.id };
+      if (!loadedSettings.deviceId || !inputDeviceIds.has(loadedSettings.deviceId)) {
+        const preferred = pickPreferredInputDevice(loadedDevices);
+        if (preferred) {
+          loadedSettings = { ...loadedSettings, deviceId: preferred.id };
         }
       }
       setSettings(loadedSettings);
