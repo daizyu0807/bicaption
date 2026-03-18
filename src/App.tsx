@@ -334,9 +334,12 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
 function getSessionSummary(viewState: ReturnType<typeof useCaptionState>, settings: AppSettings) {
   if (viewState.sessionState === 'streaming') {
     const translation = isTranslationEnabled(settings) ? '雙語' : '單語';
-    const audio = getInputHealthLabel(viewState);
     const modelNames: Record<string, string> = { sensevoice: 'SenseVoice', 'apple-stt': 'SFSpeechRecognizer' };
     const model = modelNames[settings.sttModel] ?? settings.sttModel;
+    if (!settings.outputDeviceId) {
+      return `${model}・${translation}・系統預設`;
+    }
+    const audio = getInputHealthLabel(viewState);
     return `${model}・${translation}・${audio}`;
   }
   if (viewState.sessionState === 'error') {
