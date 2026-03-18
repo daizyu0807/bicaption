@@ -318,7 +318,7 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
     sessionId: crypto.randomUUID(),
     deviceId: mode === 'dictation' ? settings.dictationDeviceId : settings.subtitleDeviceId,
     outputDeviceId: settings.outputDeviceId,
-    sourceLang: settings.sourceLang,
+    sourceLang: mode === 'dictation' ? settings.dictationSourceLang : settings.sourceLang,
     targetLang: settings.targetLang,
     sttModel: mode === 'dictation' ? settings.dictationSttModel : settings.sttModel,
     translateModel: settings.translateModel,
@@ -719,6 +719,26 @@ function SettingsView({
               <option value="sensevoice">SenseVoice</option>
             </select>
           </label>
+          <label>
+            語音語言
+            <select
+              value={draft.dictationSourceLang}
+              onChange={(event) => {
+                const lang = event.target.value;
+                const recommended = lang === 'auto' ? 'sensevoice' : draft.dictationSttModel === 'sensevoice' ? 'sensevoice' : 'apple-stt';
+                setDraft({ ...draft, dictationSourceLang: lang, dictationSttModel: recommended });
+              }}
+            >
+              <option value="auto">自動偵測</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+          </label>
+          {draft.dictationSttModel === 'apple-stt' && (
+            <p className="model-hint">SFSpeechRecognizer 不會做多語自動判斷。若你要中英混講或自動偵測，改用 SenseVoice。</p>
+          )}
           <label>
             輸出方式
             <select

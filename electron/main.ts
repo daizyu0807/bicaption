@@ -33,6 +33,7 @@ let pendingDictationStop = false;
 let pendingDictationPasteTarget: { appName: string; windowTitle: string | null } | null = null;
 let dictationOverlayHideTimeout: NodeJS.Timeout | null = null;
 let overlayMode: 'hidden' | 'subtitle' | 'dictation' = 'hidden';
+let subtitleOverlayBoundsCache: OverlayBounds | null = null;
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
@@ -326,6 +327,9 @@ function setOverlayVisible(visible: boolean) {
     if (!overlayWindow || overlayWindow.isDestroyed()) {
       createOverlayWindow();
     }
+    if (overlayWindow && subtitleOverlayBoundsCache) {
+      overlayWindow.setBounds(subtitleOverlayBoundsCache);
+    }
     overlayWindow?.showInactive();
   } else {
     setOverlayMode('hidden');
@@ -348,6 +352,15 @@ function showDictationOverlay() {
   if (!overlayWindow || overlayWindow.isDestroyed()) {
     createOverlayWindow();
   }
+  if (overlayWindow) {
+    subtitleOverlayBoundsCache = overlayWindow.getBounds();
+    const current = overlayWindow.getBounds();
+    const width = 420;
+    const height = 140;
+    const x = Math.round(current.x + (current.width - width) / 2);
+    const y = Math.round(current.y + current.height - height);
+    overlayWindow.setBounds({ x, y, width, height });
+  }
   overlayWindow?.showInactive();
 }
 
@@ -356,6 +369,9 @@ function hideDictationOverlaySoon(delayMs = 1800) {
   dictationOverlayHideTimeout = setTimeout(() => {
     dictationOverlayHideTimeout = null;
     if (activeSessionMode === 'subtitle') {
+      if (overlayWindow && subtitleOverlayBoundsCache) {
+        overlayWindow.setBounds(subtitleOverlayBoundsCache);
+      }
       setOverlayMode('subtitle');
       return;
     }
@@ -423,6 +439,9 @@ function createOverlayWindow() {
 
 function persistOverlayBounds() {
   if (!overlayWindow) {
+    return;
+  }
+  if (overlayMode === 'dictation') {
     return;
   }
   const bounds = overlayWindow.getBounds();

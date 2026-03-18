@@ -7,6 +7,7 @@ export const defaultSettings: AppSettings = {
   dictationDeviceId: '',
   outputDeviceId: '',
   dictationSttModel: 'apple-stt',
+  dictationSourceLang: 'zh',
   dictationHotkey: {
     keyCode: 59,
     modifiers: [],
@@ -46,6 +47,7 @@ export function loadSettings(): AppSettings {
     ...stored,
     subtitleDeviceId: stored.subtitleDeviceId ?? legacyDeviceId ?? '',
     dictationDeviceId: stored.dictationDeviceId ?? legacyDeviceId ?? '',
+    dictationSourceLang: stored.dictationSourceLang ?? stored.sourceLang ?? defaultSettings.dictationSourceLang,
   };
   return current;
 }
