@@ -6,6 +6,7 @@ private let relevantModifierFlags: CGEventFlags = [
     .maskControl,
     .maskShift,
     .maskAlternate,
+    .maskSecondaryFn,
 ]
 
 func emitJSON(_ payload: [String: Any]) {
@@ -82,16 +83,20 @@ func currentPermissionStatus() -> [String: Any] {
 final class GlobalHotkeyListener {
     private let keyCode: Int64
     private let requiredFlags: CGEventFlags
+    private let isModifierOnlyBinding: Bool
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
     init(keyCode: Int, requiredFlags: CGEventFlags) {
         self.keyCode = Int64(keyCode)
         self.requiredFlags = requiredFlags
+        self.isModifierOnlyBinding = requiredFlags.isEmpty && (keyCode == 59 || keyCode == 63)
     }
 
     func start() {
-        let mask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+        let mask = (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+            | (1 << CGEventType.flagsChanged.rawValue)
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             guard let userInfo else {
                 return Unmanaged.passUnretained(event)
@@ -135,10 +140,13 @@ final class GlobalHotkeyListener {
             return Unmanaged.passUnretained(event)
         }
 
+        if isModifierOnlyBinding {
+            return handleModifierOnly(type: type, event: event)
+        }
+
         guard type == .keyDown || type == .keyUp else {
             return Unmanaged.passUnretained(event)
         }
-
         let eventKeyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let eventFlags = event.flags.intersection(relevantModifierFlags)
         guard eventKeyCode == keyCode, eventFlags == requiredFlags else {
@@ -155,6 +163,52 @@ final class GlobalHotkeyListener {
                 "option": eventFlags.contains(.maskAlternate),
             ],
         ])
+        return Unmanaged.passUnretained(event)
+    }
+
+    private func handleModifierOnly(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        guard type == .flagsChanged else {
+            return Unmanaged.passUnretained(event)
+        }
+        let eventKeyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let eventFlags = event.flags.intersection(relevantModifierFlags)
+
+        if keyCode == 59 {
+            guard eventKeyCode == 59 || eventKeyCode == 62 else {
+                return Unmanaged.passUnretained(event)
+            }
+            emitJSON([
+                "type": eventFlags.contains(.maskControl) ? "hotkey_down" : "hotkey_up",
+                "keyCode": eventKeyCode,
+                "modifiers": [
+                    "command": eventFlags.contains(.maskCommand),
+                    "control": eventFlags.contains(.maskControl),
+                    "shift": eventFlags.contains(.maskShift),
+                    "option": eventFlags.contains(.maskAlternate),
+                    "fn": eventFlags.contains(.maskSecondaryFn),
+                ],
+            ])
+            return Unmanaged.passUnretained(event)
+        }
+
+        if keyCode == 63 {
+            guard eventKeyCode == 63 else {
+                return Unmanaged.passUnretained(event)
+            }
+            emitJSON([
+                "type": eventFlags.contains(.maskSecondaryFn) ? "hotkey_down" : "hotkey_up",
+                "keyCode": eventKeyCode,
+                "modifiers": [
+                    "command": eventFlags.contains(.maskCommand),
+                    "control": eventFlags.contains(.maskControl),
+                    "shift": eventFlags.contains(.maskShift),
+                    "option": eventFlags.contains(.maskAlternate),
+                    "fn": eventFlags.contains(.maskSecondaryFn),
+                ],
+            ])
+            return Unmanaged.passUnretained(event)
+        }
+
         return Unmanaged.passUnretained(event)
     }
 }

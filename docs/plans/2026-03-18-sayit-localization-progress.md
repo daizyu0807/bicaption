@@ -24,6 +24,7 @@
     - [build-global-hotkey.sh](/Users/davedai/Project/tools/realtime-bilingual-subtitles/scripts/build-global-hotkey.sh)
   - Electron main 已開始將 `hotkey_down` / `hotkey_up` 接到實際 dictation start/stop 流程。
   - dictation hotkey binding 已改由 settings 驅動，不再只靠 main process 內建常數。
+  - 已支援 modifier-only press-to-talk，包含 `Hold Ctrl` 與 `Hold Fn`。
 - `Phase 0.2 權限模型確認`
   - 部分完成
   - 已有 Accessibility / Input Monitoring 檢查 IPC 與 UI 測試面板，但尚未完成正式 fallback 流程。
@@ -60,6 +61,7 @@
   - hotkey 驅動的 dictation start/stop 已接進 main process，但正式 UX 與設定化綁定仍未完成。
   - 已補 hotkey 設定 UI，可調整 key 與 modifiers。
   - 已補 hotkey 驗證與常見系統快捷鍵衝突提示。
+  - hotkey 設定 UI 已可直接切到 `Hold Ctrl` / `Hold Fn`。
 - `Phase 3.1 Sidecar Dictation Session`
   - 進行中
   - Python sidecar 已開始分流 `mode=dictation`，並在 finalize 前緩存 transcript。

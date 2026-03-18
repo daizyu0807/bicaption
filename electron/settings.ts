@@ -5,8 +5,8 @@ export const defaultSettings: AppSettings = {
   deviceId: 'blackhole',
   outputDeviceId: '',
   dictationHotkey: {
-    keyCode: 49,
-    modifiers: ['cmd', 'shift'],
+    keyCode: 59,
+    modifiers: [],
   },
   sourceLang: 'zh',
   targetLang: 'zh-TW',

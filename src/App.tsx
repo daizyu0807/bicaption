@@ -15,7 +15,7 @@ import type {
 } from '../electron/types.js';
 import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from './caption-state.js';
 import { initialDictationViewState, reduceDictationEvent } from './dictation-state.js';
-import { getDictationHotkeyLabel, validateDictationHotkey } from './dictation-hotkey.js';
+import { getDictationHotkeyLabel, isModifierOnlyHotkey, validateDictationHotkey } from './dictation-hotkey.js';
 
 function isOverlayRoute() {
   return window.location.hash === '#overlay';
@@ -465,6 +465,8 @@ function SettingsView({
     });
   }
 
+  const modifierOnlyHotkey = isModifierOnlyHotkey(hotkeyBinding);
+
 
   return (
     <main className="settings-shell">
@@ -537,14 +539,20 @@ function SettingsView({
               Hotkey key
               <select
                 value={draft.dictationHotkey.keyCode}
-                onChange={(event) => setDraft({
-                  ...draft,
-                  dictationHotkey: {
-                    ...draft.dictationHotkey,
-                    keyCode: Number(event.target.value),
-                  },
-                })}
+                onChange={(event) => {
+                  const keyCode = Number(event.target.value);
+                  setDraft({
+                    ...draft,
+                    dictationHotkey: {
+                      ...draft.dictationHotkey,
+                      keyCode,
+                      modifiers: [59, 63].includes(keyCode) ? [] : draft.dictationHotkey.modifiers,
+                    },
+                  });
+                }}
               >
+                <option value="59">Hold Ctrl</option>
+                <option value="63">Hold Fn</option>
                 <option value="49">Space</option>
                 <option value="36">Return</option>
               </select>
@@ -556,6 +564,7 @@ function SettingsView({
                   <input
                     type="checkbox"
                     checked={draft.dictationHotkey.modifiers.includes('cmd')}
+                    disabled={modifierOnlyHotkey}
                     onChange={(event) => toggleHotkeyModifier('cmd', event.target.checked)}
                   />
                   Cmd
@@ -564,6 +573,7 @@ function SettingsView({
                   <input
                     type="checkbox"
                     checked={draft.dictationHotkey.modifiers.includes('shift')}
+                    disabled={modifierOnlyHotkey}
                     onChange={(event) => toggleHotkeyModifier('shift', event.target.checked)}
                   />
                   Shift
@@ -572,6 +582,7 @@ function SettingsView({
                   <input
                     type="checkbox"
                     checked={draft.dictationHotkey.modifiers.includes('ctrl')}
+                    disabled={modifierOnlyHotkey}
                     onChange={(event) => toggleHotkeyModifier('ctrl', event.target.checked)}
                   />
                   Ctrl
@@ -580,6 +591,7 @@ function SettingsView({
                   <input
                     type="checkbox"
                     checked={draft.dictationHotkey.modifiers.includes('alt')}
+                    disabled={modifierOnlyHotkey}
                     onChange={(event) => toggleHotkeyModifier('alt', event.target.checked)}
                   />
                   Option
@@ -587,6 +599,7 @@ function SettingsView({
               </div>
             </label>
           </div>
+          {modifierOnlyHotkey && <p className="model-hint">Modifier-only mode uses press-to-talk directly on the selected key.</p>}
           <div className="hotkey-permissions">
             <div className="hotkey-permission-row">
               <span className="hotkey-permission-label">Accessibility</span>

@@ -6,11 +6,21 @@ export interface DictationHotkeyValidation {
   warning: string | null;
 }
 
+export function isModifierOnlyHotkey(binding: DictationHotkeyBinding) {
+  return binding.modifiers.length === 0 && [59, 63].includes(binding.keyCode);
+}
+
 function normalizeModifiers(binding: DictationHotkeyBinding) {
   return [...new Set(binding.modifiers)].sort().join('+');
 }
 
 export function getDictationHotkeyLabel(binding: DictationHotkeyBinding) {
+  if (binding.keyCode === 59 && binding.modifiers.length === 0) {
+    return 'Hold Ctrl';
+  }
+  if (binding.keyCode === 63 && binding.modifiers.length === 0) {
+    return 'Hold Fn';
+  }
   const modifierLabels = binding.modifiers.map((modifier) => {
     switch (modifier) {
       case 'cmd':
@@ -34,6 +44,14 @@ export function validateDictationHotkey(binding: DictationHotkeyBinding): Dictat
     return {
       isValid: false,
       error: 'Dictation hotkey needs a non-modifier key.',
+      warning: null,
+    };
+  }
+
+  if (isModifierOnlyHotkey(binding)) {
+    return {
+      isValid: true,
+      error: null,
       warning: null,
     };
   }
