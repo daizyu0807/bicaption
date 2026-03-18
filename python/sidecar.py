@@ -98,8 +98,12 @@ def build_dictation_final_event(
     transcript_parts: list[str],
     started_at_ms: int,
     ended_at_ms: int,
+    convert_s2t: bool = False,
+    opencc_s2t: OpenCC | None = None,
 ) -> dict[str, Any]:
     transcript = normalize_text(" ".join(transcript_parts))
+    if convert_s2t and opencc_s2t is not None and transcript:
+        transcript = opencc_s2t.convert(transcript)
     return {
         "type": "dictation_final",
         "sessionId": session_id,
@@ -1265,6 +1269,8 @@ class SidecarApp:
                     self.dictation_parts,
                     self.dictation_started_at_ms or self.dictation_last_update_ms,
                     self.dictation_last_update_ms,
+                    convert_s2t=self.config.target_lang.lower() in {"zh-tw", "zh-hant"},
+                    opencc_s2t=self.opencc_s2t,
                 )
             )
         emit({"type": "session_stopped_ack"})

@@ -81,6 +81,18 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertEqual(event["chunkCount"], 2)
         self.assertEqual(event["latencyMs"], 30)
 
+    def test_dictation_final_event_converts_to_traditional_chinese(self) -> None:
+        converter = types.SimpleNamespace(convert=lambda text: text.replace("汉", "漢").replace("语", "語"))
+        event = build_dictation_final_event(
+            "session-2",
+            ["汉语", "  输入 "],
+            10,
+            40,
+            convert_s2t=True,
+            opencc_s2t=converter,
+        )
+        self.assertEqual(event["text"], "漢語 输入")
+
 
 if __name__ == "__main__":
     unittest.main()
