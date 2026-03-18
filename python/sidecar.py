@@ -63,8 +63,52 @@ def count_words(text: str) -> int:
     return len([token for token in re.split(r"\s+", normalize_text(text)) if token])
 
 
+def looks_like_garbage_text(text: str) -> bool:
+    normalized = normalize_text(text)
+    if not normalized:
+        return True
+    compact = normalized.replace(" ", "")
+    if len(compact) < 4:
+        return False
+    if re.search(r"(.)\1{5,}", compact):
+        return True
+    if re.fullmatch(r"(?:[A-Za-z]-?){6,}", normalized):
+        return True
+    if normalized.count("-") >= 4 and len(set(compact.lower())) <= 4:
+        return True
+    return False
+
+
 def make_segment_id(start_ms: int, end_ms: int) -> str:
     return f"seg-{round(start_ms / 100)}-{round(end_ms / 100)}"
+
+
+def build_dictation_state_event(state: str, detail: str | None = None) -> dict[str, Any]:
+    event: dict[str, Any] = {
+        "type": "dictation_state",
+        "state": state,
+    }
+    if detail:
+        event["detail"] = detail
+    return event
+
+
+def build_dictation_final_event(
+    session_id: str,
+    transcript_parts: list[str],
+    started_at_ms: int,
+    ended_at_ms: int,
+) -> dict[str, Any]:
+    transcript = normalize_text(" ".join(transcript_parts))
+    return {
+        "type": "dictation_final",
+        "sessionId": session_id,
+        "text": transcript,
+        "chunkCount": len(transcript_parts),
+        "startedAtMs": started_at_ms,
+        "endedAtMs": ended_at_ms,
+        "latencyMs": max(0, ended_at_ms - started_at_ms),
+    }
 
 
 def parse_sensevoice_lang(lang_tag: str) -> str:
@@ -216,6 +260,10 @@ class GoogleTranslationProvider(TranslationProvider):
         for index in missing_indexes:
             results[index] = self.translate(normalized_items[index], source_lang, target_lang)
         return results
+
+
+class FallbackTranslator(GoogleTranslationProvider):
+    pass
 
 
 @dataclass
@@ -1007,7 +1055,7 @@ class AppleSttTranscriber:
                     display_off = tmp
             raw_delta = self._clean_leading_fragment(latest_partial_text[display_off:].lstrip())
             delta = self._stabilize_display_text(raw_delta)
-            if delta:
+            if delta and _emit_context["mode"] == "subtitle":
                 next_id = f"apple-seg-{self._segment_counter + 1}"
                 emit({
                     "type": "partial_caption",
@@ -1085,6 +1133,9 @@ class SidecarApp:
         self.transcriber: SenseVoiceTranscriber | WhisperTinyEnTranscriber | WhisperSmallTranscriber | ZipformerKoreanTranscriber | AppleSttTranscriber | None = None
         self.translator: TranslationProvider | None = None
         self.opencc_s2t = OpenCC("s2t")
+        self.dictation_parts: list[str] = []
+        self.dictation_started_at_ms = 0
+        self.dictation_last_update_ms = 0
         self.translation_queue: queue.Queue[tuple[TranscriptChunk, SessionConfig]] = queue.Queue()
         self.translation_worker = threading.Thread(target=self._translation_loop, daemon=True)
         self.translation_worker.start()
@@ -1131,6 +1182,11 @@ class SidecarApp:
             partial_stable_ms=int(payload.get("partialStableMs", 500)),
         )
         set_emit_context(self.config.mode, self.config.session_id)
+        if self.config.mode == "dictation":
+            self.dictation_parts = []
+            self.dictation_started_at_ms = now_ms()
+            self.dictation_last_update_ms = self.dictation_started_at_ms
+            emit(build_dictation_state_event("recording", "Dictation session started"))
         self.stop_event.clear()
         self.active = True
         emit({"type": "session_state", "state": "connecting", "detail": f"Connecting to {self.config.device_id}"})
@@ -1193,6 +1249,17 @@ class SidecarApp:
         if self.active:
             self.active = False
             emit({"type": "session_state", "state": "stopped"})
+        if self.config is not None and self.config.mode == "dictation":
+            self.dictation_last_update_ms = max(self.dictation_last_update_ms, now_ms())
+            emit(build_dictation_state_event("stopped", "Dictation session stopped"))
+            emit(
+                build_dictation_final_event(
+                    self.config.session_id,
+                    self.dictation_parts,
+                    self.dictation_started_at_ms or self.dictation_last_update_ms,
+                    self.dictation_last_update_ms,
+                )
+            )
         emit({"type": "session_stopped_ack"})
 
     def _should_translate(self, chunk: TranscriptChunk) -> bool:
@@ -1209,6 +1276,13 @@ class SidecarApp:
         if self.transcriber is not None:
             self.transcriber.finalized_ids.add(chunk.segment_id)
         source_text = chunk.source_text
+        if self.config is not None and self.config.mode == "dictation":
+            normalized = normalize_text(source_text)
+            if normalized:
+                self.dictation_parts.append(normalized)
+                self.dictation_last_update_ms = now_ms()
+                emit(build_dictation_state_event("capturing", f"Buffered {chunk.segment_id}"))
+            return
         # Convert simplified Chinese to traditional if needed
         if chunk.detected_lang.lower().startswith("zh") and self.config is not None:
             target = self.config.target_lang.lower()

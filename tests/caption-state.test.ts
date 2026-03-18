@@ -76,3 +76,30 @@ test('non-subtitle events are ignored by caption reducer', () => {
 
   assert.deepEqual(state, connected);
 });
+
+test('dictation events are ignored by subtitle caption reducer', () => {
+  const connected = reduceSidecarEvent(initialViewState, {
+    type: 'session_state',
+    mode: 'subtitle',
+    sessionId: 'session-1',
+    state: 'connecting',
+  });
+  const afterState = reduceSidecarEvent(connected, {
+    type: 'dictation_state',
+    mode: 'subtitle',
+    sessionId: 'session-1',
+    state: 'recording',
+  });
+  const afterFinal = reduceSidecarEvent(afterState, {
+    type: 'dictation_final',
+    mode: 'subtitle',
+    sessionId: 'session-1',
+    text: 'Hello',
+    startedAtMs: 1,
+    endedAtMs: 2,
+    latencyMs: 1,
+  });
+
+  assert.deepEqual(afterState, connected);
+  assert.deepEqual(afterFinal, connected);
+});
