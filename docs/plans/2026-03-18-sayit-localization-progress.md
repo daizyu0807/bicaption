@@ -70,6 +70,7 @@
   - Electron main 已在收到 `dictation_final` 時將文字寫入 clipboard。
   - 已補 `dictationOutputAction` 設定欄位。
   - `paste` / `copy-and-paste` 已接上保守版 paste 路徑；若 Accessibility 不可用或貼上失敗，會保留 clipboard 並回報 fallback。
+  - 已補前景 app 一致性檢查；若 keyup 後前景 app 已改變，會降級為 clipboard fallback。
 
 ## Interrupted Changes
 
@@ -89,8 +90,8 @@
 
 ## Next Actions
 
-1. 補焦點一致性檢查，避免 paste 到錯誤前景 app。
-2. 補 dictation hotkey 的正式設定 UI，而不只是沿用 settings schema。
+1. 補 dictation hotkey 的正式設定 UI，而不只是沿用 settings schema。
+2. 視需要把焦點比對從 app 名稱細化到 window 層級。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 
 ## Verification Notes

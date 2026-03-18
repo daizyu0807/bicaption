@@ -30,6 +30,7 @@ let activeSessionId: string | null = null;
 let sessionTransitionPromise: Promise<void> | null = null;
 let hotkeyListenerMode: 'dictation' | 'test' | 'idle' = 'idle';
 let pendingDictationStop = false;
+let pendingDictationPasteTarget: { appName: string } | null = null;
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
@@ -100,25 +101,57 @@ function handleDictationFinal(event: SidecarEvent) {
         status: 'copied',
       } satisfies DictationOutputStatusEvent);
     } else {
-      const pasted = tryPasteClipboard(outputAction);
+      const pasted = tryPasteClipboard(outputAction, pendingDictationPasteTarget);
       sendToWindows('dictation:output-status', {
         type: 'dictation_output_status',
         action: outputAction,
         status: pasted ? 'pasted' : 'fallback',
-        detail: pasted ? 'Pasted into foreground app.' : 'Paste unavailable, kept clipboard copy.',
+        detail: pasted ? 'Pasted into foreground app.' : getPasteFallbackDetail(),
       } satisfies DictationOutputStatusEvent);
     }
   }
+  pendingDictationPasteTarget = null;
   sendToWindows('sidecar:event', event);
 }
 
-function tryPasteClipboard(action: DictationOutputAction) {
+function getFrontmostAppName() {
+  try {
+    return execFileSync('osascript', [
+      '-e',
+      'tell application "System Events" to get name of first application process whose frontmost is true',
+    ], {
+      cwd: getSpawnCwd(),
+      encoding: 'utf-8',
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function getPasteFallbackDetail() {
+  if (!pendingDictationPasteTarget) {
+    return 'Paste unavailable, kept clipboard copy.';
+  }
+  const currentApp = getFrontmostAppName();
+  if (currentApp && currentApp !== pendingDictationPasteTarget.appName) {
+    return `Focus changed from ${pendingDictationPasteTarget.appName} to ${currentApp}, kept clipboard copy.`;
+  }
+  return 'Paste unavailable, kept clipboard copy.';
+}
+
+function tryPasteClipboard(action: DictationOutputAction, expectedTarget: { appName: string } | null) {
   if (action === 'copy') {
     return false;
   }
   const accessibility = checkAccessibilityPermission();
   if (!accessibility.trusted) {
     return false;
+  }
+  if (expectedTarget) {
+    const currentApp = getFrontmostAppName();
+    if (!currentApp || currentApp !== expectedTarget.appName) {
+      return false;
+    }
   }
   try {
     execFileSync('osascript', [
@@ -168,6 +201,7 @@ function clearActiveSession(sessionId?: string) {
   if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
     activeSessionMode = null;
     activeSessionId = null;
+    pendingDictationPasteTarget = null;
   }
 }
 
@@ -202,6 +236,7 @@ async function startDictationFromHotkey() {
     }
     const settings = loadSettings();
     const config = buildSessionConfig(settings, 'dictation');
+    pendingDictationPasteTarget = null;
     prepareSession(config);
     bridge.startSession(config);
   });
@@ -216,6 +251,8 @@ async function stopDictationFromHotkey() {
     pendingDictationStop = true;
     return;
   }
+  const currentApp = getFrontmostAppName();
+  pendingDictationPasteTarget = currentApp ? { appName: currentApp } : null;
   await runSessionTransition(async () => {
     if (activeSessionMode !== 'dictation') {
       return;
