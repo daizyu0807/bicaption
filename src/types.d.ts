@@ -1,7 +1,8 @@
-import type { AppSettings, CaptionConfig, ModelDownloadProgress, ModelStatus, OverlayBounds, SidecarEvent } from '../electron/types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, ModelDownloadProgress, ModelStatus, OverlayBounds, SidecarEvent } from '../electron/types.js';
 
 type SubscribeMap = {
   'sidecar:event': SidecarEvent;
+  'dictation:hotkey-event': DictationHotkeyEvent;
   'settings:changed': AppSettings;
   'models:progress': ModelDownloadProgress;
   'models:done': ModelStatus;
@@ -30,6 +31,8 @@ declare global {
       downloadModel(modelKey: string): Promise<{ ok: boolean }>;
       checkAccessibilityPermission(): Promise<{ trusted: boolean; status: string }>;
       checkInputMonitoringPermission(): Promise<{ trusted: boolean; available: boolean; detail?: string }>;
+      testDictationHotkey(binding: DictationHotkeyBinding): Promise<{ ok: boolean }>;
+      stopDictationHotkeyTest(): Promise<{ ok: boolean }>;
       subscribe<K extends keyof SubscribeMap>(
         eventName: K,
         handler: (payload: SubscribeMap[K]) => void,

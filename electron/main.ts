@@ -4,10 +4,11 @@ import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SidecarBridge } from './sidecar.js';
+import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
 import { getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
-import type { AppSettings, CaptionConfig, ModelDownloadProgress, OverlayBounds, SidecarEvent } from './types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, ModelDownloadProgress, OverlayBounds, SidecarEvent } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -25,6 +26,7 @@ let saveFilePath: string | null = null;
 let isQuitting = false;
 
 const bridge = new SidecarBridge();
+const nativeHotkeyBridge = new NativeHotkeyBridge();
 const modelDownloader = new ModelDownloader(getModelDir());
 
 function formatSaveFilename(date: Date): string {
@@ -202,6 +204,10 @@ function forwardEvent(event: SidecarEvent) {
   sendToWindows('sidecar:event', event);
 }
 
+function forwardHotkeyEvent(event: DictationHotkeyEvent) {
+  sendToWindows('dictation:hotkey-event', event);
+}
+
 async function ensureMicrophoneAccess() {
   if (process.platform !== 'darwin') {
     return true;
@@ -261,6 +267,14 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('permissions:check-accessibility', () => checkAccessibilityPermission());
   ipcMain.handle('permissions:check-input-monitoring', () => checkInputMonitoringPermission());
+  ipcMain.handle('dictation:test-hotkey', (_event, binding: DictationHotkeyBinding) => {
+    nativeHotkeyBridge.startListening(binding);
+    return { ok: true };
+  });
+  ipcMain.handle('dictation:stop-hotkey-test', () => {
+    nativeHotkeyBridge.stopListening();
+    return { ok: true };
+  });
   ipcMain.handle('session:start', (_event, config: CaptionConfig) => {
     overlaySuppressed = config.mode === 'subtitle' ? false : overlaySuppressed;
     if (config.mode === 'subtitle') {
@@ -359,6 +373,7 @@ app.whenReady().then(() => {
   modelDownloader.on('done', (status: unknown) => {
     sendToWindows('models:done', status);
   });
+  nativeHotkeyBridge.on('event', forwardHotkeyEvent);
 
   ipcMain.handle('overlay:show', () => {
     overlaySuppressed = false;
@@ -395,6 +410,7 @@ app.dock?.show();
 
 app.on('before-quit', () => {
   isQuitting = true;
+  nativeHotkeyBridge.stopListening();
   bridge.dispose();
 });
 

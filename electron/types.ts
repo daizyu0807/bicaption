@@ -1,6 +1,19 @@
 export type SessionState = 'idle' | 'connecting' | 'streaming' | 'error' | 'stopped';
 export type SessionMode = 'subtitle' | 'dictation';
 
+export interface DictationHotkeyBinding {
+  keyCode: number;
+  modifiers: string[];
+}
+
+export interface DictationHotkeyEvent {
+  type: 'listener_ready' | 'hotkey_down' | 'hotkey_up' | 'permission_status' | 'error' | 'listener_stopped';
+  keyCode?: number;
+  modifiers?: Record<string, boolean>;
+  trusted?: boolean;
+  message?: string;
+}
+
 export interface CaptionConfig {
   mode: SessionMode;
   sessionId: string;

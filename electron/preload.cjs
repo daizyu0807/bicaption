@@ -26,5 +26,7 @@ contextBridge.exposeInMainWorld('app', {
   downloadModel: (modelKey) => ipcRenderer.invoke('models:download-one', modelKey),
   checkAccessibilityPermission: () => ipcRenderer.invoke('permissions:check-accessibility'),
   checkInputMonitoringPermission: () => ipcRenderer.invoke('permissions:check-input-monitoring'),
+  testDictationHotkey: (binding) => ipcRenderer.invoke('dictation:test-hotkey', binding),
+  stopDictationHotkeyTest: () => ipcRenderer.invoke('dictation:stop-hotkey-test'),
   subscribe: (eventName, handler) => on(eventName, handler),
 });
