@@ -3,12 +3,13 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { SidecarBridge } from './sidecar.js';
 import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
 import { getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
-import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, ModelDownloadProgress, OverlayBounds, SidecarEvent } from './types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -24,6 +25,16 @@ let overlayWindow: BrowserWindow | null = null;
 let overlaySuppressed = false;
 let saveFilePath: string | null = null;
 let isQuitting = false;
+let activeSessionMode: SessionMode | null = null;
+let activeSessionId: string | null = null;
+let sessionTransitionPromise: Promise<void> | null = null;
+let hotkeyListenerMode: 'dictation' | 'test' | 'idle' = 'idle';
+let pendingDictationStop = false;
+
+const defaultDictationHotkeyBinding: DictationHotkeyBinding = {
+  keyCode: 49,
+  modifiers: ['cmd', 'shift'],
+};
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
@@ -87,6 +98,102 @@ function handleDictationFinal(event: SidecarEvent) {
     clipboard.writeText(event.text);
   }
   sendToWindows('sidecar:event', event);
+}
+
+function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionConfig {
+  return {
+    mode,
+    sessionId: randomUUID(),
+    deviceId: settings.deviceId,
+    outputDeviceId: settings.outputDeviceId,
+    sourceLang: settings.sourceLang,
+    targetLang: settings.targetLang,
+    sttModel: settings.sttModel,
+    translateModel: settings.translateModel,
+    chunkMs: settings.chunkMs,
+    partialStableMs: settings.partialStableMs,
+    beamSize: settings.beamSize,
+    bestOf: settings.bestOf,
+    vadFilter: settings.vadFilter,
+    conditionOnPrev: settings.conditionOnPrev,
+  };
+}
+
+function prepareSession(config: CaptionConfig) {
+  overlaySuppressed = config.mode === 'subtitle' ? false : overlaySuppressed;
+  if (config.mode === 'subtitle') {
+    initSaveFile();
+  } else {
+    saveFilePath = null;
+  }
+  activeSessionMode = config.mode;
+  activeSessionId = config.sessionId;
+}
+
+function clearActiveSession(sessionId?: string) {
+  if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
+    activeSessionMode = null;
+    activeSessionId = null;
+  }
+}
+
+async function stopActiveSession() {
+  if (!activeSessionMode) {
+    return;
+  }
+  await bridge.stopSession();
+}
+
+function runSessionTransition(task: () => Promise<void>) {
+  if (sessionTransitionPromise) {
+    return sessionTransitionPromise;
+  }
+  sessionTransitionPromise = (async () => {
+    try {
+      await task();
+    } finally {
+      sessionTransitionPromise = null;
+    }
+  })();
+  return sessionTransitionPromise;
+}
+
+async function startDictationFromHotkey() {
+  await runSessionTransition(async () => {
+    if (activeSessionMode === 'dictation') {
+      return;
+    }
+    if (activeSessionMode) {
+      await stopActiveSession();
+    }
+    const settings = loadSettings();
+    const config = buildSessionConfig(settings, 'dictation');
+    prepareSession(config);
+    bridge.startSession(config);
+  });
+  if (pendingDictationStop && activeSessionMode === 'dictation') {
+    pendingDictationStop = false;
+    await stopDictationFromHotkey();
+  }
+}
+
+async function stopDictationFromHotkey() {
+  if (sessionTransitionPromise) {
+    pendingDictationStop = true;
+    return;
+  }
+  await runSessionTransition(async () => {
+    if (activeSessionMode !== 'dictation') {
+      return;
+    }
+    await stopActiveSession();
+  });
+  pendingDictationStop = false;
+}
+
+function restartDictationHotkeyListener() {
+  hotkeyListenerMode = 'dictation';
+  nativeHotkeyBridge.startListening(defaultDictationHotkeyBinding);
 }
 
 function setOverlayVisible(visible: boolean) {
@@ -198,14 +305,25 @@ function bindBridge() {
         setOverlayVisible(false);
       }
     }
+    if (event.type === 'session_state' && event.state === 'error') {
+      clearActiveSession(event.sessionId);
+    }
     sendToWindows('sidecar:event', event);
   });
   bridge.on('dictation_state', forwardEvent);
   bridge.on('dictation_final', handleDictationFinal);
-  bridge.on('session_stopped_ack', forwardEvent);
+  bridge.on('session_stopped_ack', (event: SidecarEvent) => {
+    if (event.type === 'session_stopped_ack') {
+      clearActiveSession(event.sessionId);
+    }
+    forwardEvent(event);
+  });
   bridge.on('error', (event: SidecarEvent) => {
     if (event.type === 'error' && event.mode === 'subtitle' && !event.recoverable) {
       setOverlayVisible(false);
+    }
+    if (event.type === 'error' && !event.recoverable) {
+      clearActiveSession(event.sessionId);
     }
     sendToWindows('sidecar:event', event);
   });
@@ -218,6 +336,14 @@ function forwardEvent(event: SidecarEvent) {
 
 function forwardHotkeyEvent(event: DictationHotkeyEvent) {
   sendToWindows('dictation:hotkey-event', event);
+  if (hotkeyListenerMode !== 'dictation') {
+    return;
+  }
+  if (event.type === 'hotkey_down') {
+    void startDictationFromHotkey();
+  } else if (event.type === 'hotkey_up') {
+    void stopDictationFromHotkey();
+  }
 }
 
 async function ensureMicrophoneAccess() {
@@ -280,25 +406,29 @@ app.whenReady().then(() => {
   ipcMain.handle('permissions:check-accessibility', () => checkAccessibilityPermission());
   ipcMain.handle('permissions:check-input-monitoring', () => checkInputMonitoringPermission());
   ipcMain.handle('dictation:test-hotkey', (_event, binding: DictationHotkeyBinding) => {
+    hotkeyListenerMode = 'test';
     nativeHotkeyBridge.startListening(binding);
     return { ok: true };
   });
   ipcMain.handle('dictation:stop-hotkey-test', () => {
     nativeHotkeyBridge.stopListening();
+    restartDictationHotkeyListener();
     return { ok: true };
   });
-  ipcMain.handle('session:start', (_event, config: CaptionConfig) => {
-    overlaySuppressed = config.mode === 'subtitle' ? false : overlaySuppressed;
-    if (config.mode === 'subtitle') {
-      initSaveFile();
-    } else {
-      saveFilePath = null;
-    }
-    bridge.startSession(config);
+  ipcMain.handle('session:start', async (_event, config: CaptionConfig) => {
+    await runSessionTransition(async () => {
+      if (activeSessionMode) {
+        await stopActiveSession();
+      }
+      prepareSession(config);
+      bridge.startSession(config);
+    });
     return { ok: true };
   });
   ipcMain.handle('session:stop', async () => {
-    await bridge.stopSession();
+    await runSessionTransition(async () => {
+      await stopActiveSession();
+    });
     return { ok: true };
   });
   ipcMain.handle('session:devices', async () => {
@@ -386,6 +516,7 @@ app.whenReady().then(() => {
     sendToWindows('models:done', status);
   });
   nativeHotkeyBridge.on('event', forwardHotkeyEvent);
+  restartDictationHotkeyListener();
 
   ipcMain.handle('overlay:show', () => {
     overlaySuppressed = false;

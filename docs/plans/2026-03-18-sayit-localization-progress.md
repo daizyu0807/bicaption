@@ -22,6 +22,7 @@
     - [global-hotkey.swift](/Users/davedai/Project/tools/realtime-bilingual-subtitles/swift/global-hotkey.swift)
     - [native-hotkey.ts](/Users/davedai/Project/tools/realtime-bilingual-subtitles/electron/native-hotkey.ts)
     - [build-global-hotkey.sh](/Users/davedai/Project/tools/realtime-bilingual-subtitles/scripts/build-global-hotkey.sh)
+  - Electron main 已開始將 `hotkey_down` / `hotkey_up` 接到實際 dictation start/stop 流程。
 - `Phase 0.2 權限模型確認`
   - 部分完成
   - 已有 Accessibility / Input Monitoring 檢查 IPC 與 UI 測試面板，但尚未完成正式 fallback 流程。
@@ -55,7 +56,7 @@
   - 已開始
   - renderer 已有獨立 dictation reducer 與最小觀察面板，不再和 subtitle caption reducer 共用狀態。
   - 已補 app 內手動 start/stop dictation，作為 fallback 與除錯入口。
-  - 目前仍缺正式的 hotkey 驅動 dictation mode 切換與完整 UX。
+  - hotkey 驅動的 dictation start/stop 已接進 main process，但正式 UX 與設定化綁定仍未完成。
 - `Phase 3.1 Sidecar Dictation Session`
   - 進行中
   - Python sidecar 已開始分流 `mode=dictation`，並在 finalize 前緩存 transcript。
@@ -86,8 +87,8 @@
 
 ## Next Actions
 
-1. 補真正的 dictation start/stop UX，讓 hotkey / session / renderer 狀態串起來。
-2. 補 output action 設定，讓 clipboard / paste 有明確選項。
+1. 補 output action 設定，讓 clipboard / paste 有明確選項。
+2. 把 dictation hotkey binding 從硬編碼改成 settings 驅動。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 
 ## Verification Notes
