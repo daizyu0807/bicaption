@@ -32,6 +32,7 @@ declare global {
       downloadModel(modelKey: string): Promise<{ ok: boolean }>;
       checkAccessibilityPermission(): Promise<{ trusted: boolean; status: string }>;
       checkInputMonitoringPermission(): Promise<{ trusted: boolean; available: boolean; detail?: string }>;
+      requestInputMonitoringPermission(): Promise<{ trusted: boolean; available: boolean; detail?: string }>;
       testDictationHotkey(binding: DictationHotkeyBinding): Promise<{ ok: boolean }>;
       stopDictationHotkeyTest(): Promise<{ ok: boolean }>;
       subscribe<K extends keyof SubscribeMap>(

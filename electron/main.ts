@@ -503,6 +503,31 @@ function checkInputMonitoringPermission() {
   }
 }
 
+function requestInputMonitoringPermission() {
+  if (process.platform !== 'darwin') {
+    return { trusted: true, available: true, detail: 'not-applicable' };
+  }
+
+  const { command, args } = getGlobalHotkeyCommand();
+  try {
+    const output = execFileSync(command, [...args, '--request-access'], {
+      cwd: getSpawnCwd(),
+      encoding: 'utf-8',
+    }).trim();
+    const parsed = JSON.parse(output) as { trusted?: boolean };
+    return {
+      trusted: Boolean(parsed.trusted),
+      available: true,
+    };
+  } catch (error) {
+    return {
+      trusted: false,
+      available: false,
+      detail: error instanceof Error ? error.message : 'Unknown global-hotkey helper error',
+    };
+  }
+}
+
 app.whenReady().then(() => {
   createSettingsWindow();
   createOverlayWindow();
@@ -518,6 +543,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('permissions:check-accessibility', () => checkAccessibilityPermission());
   ipcMain.handle('permissions:check-input-monitoring', () => checkInputMonitoringPermission());
+  ipcMain.handle('permissions:request-input-monitoring', () => requestInputMonitoringPermission());
   ipcMain.handle('dictation:test-hotkey', (_event, binding: DictationHotkeyBinding) => {
     hotkeyListenerMode = 'test';
     nativeHotkeyBridge.startListening(binding);

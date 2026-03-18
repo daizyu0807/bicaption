@@ -397,6 +397,26 @@ function SettingsView({
     };
   }, []);
 
+  async function refreshPermissionState() {
+    const [accessibility, inputMonitoring] = await Promise.all([
+      window.app.checkAccessibilityPermission(),
+      window.app.checkInputMonitoringPermission(),
+    ]);
+    setAccessibilityPermission(accessibility);
+    setInputMonitoringPermission(inputMonitoring);
+  }
+
+  async function ensureInputMonitoringPermission() {
+    const current = await window.app.checkInputMonitoringPermission();
+    setInputMonitoringPermission(current);
+    if (current.trusted) {
+      return true;
+    }
+    const requested = await window.app.requestInputMonitoringPermission();
+    setInputMonitoringPermission(requested);
+    return requested.trusted;
+  }
+
   useEffect(() => {
     return window.app.subscribe('dictation:hotkey-event', (payload) => {
       const event = payload as DictationHotkeyEvent;
@@ -441,6 +461,11 @@ function SettingsView({
   }, [settings]);
 
   async function startManualDictation() {
+    const granted = await ensureInputMonitoringPermission();
+    if (!granted) {
+      setHotkeyTestError('Input Monitoring is required for dictation hotkeys. Approve the app in System Settings and reopen it if needed.');
+      return;
+    }
     if (isStreaming || isDictating) {
       await window.app.stopSession();
     }
@@ -612,6 +637,25 @@ function SettingsView({
               <span className={inputMonitoringPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
                 {getPermissionLabel(inputMonitoringPermission, 'input-monitoring')}
               </span>
+              <button
+                className="secondary"
+                disabled={Boolean(inputMonitoringPermission?.trusted)}
+                onClick={async () => {
+                  setHotkeyTestError(null);
+                  try {
+                    const granted = await ensureInputMonitoringPermission();
+                    if (!granted) {
+                      setHotkeyTestError('Input Monitoring is still not granted. Approve the prompt in System Settings, then reopen the app if needed.');
+                    } else {
+                      await refreshPermissionState();
+                    }
+                  } catch (error) {
+                    setHotkeyTestError(error instanceof Error ? error.message : 'Failed to request Input Monitoring permission');
+                  }
+                }}
+              >
+                Request
+              </button>
             </div>
           </div>
           <div className="hotkey-actions">
@@ -620,8 +664,13 @@ function SettingsView({
               disabled={isHotkeyTestRunning || !hotkeyValidation.isValid}
               onClick={async () => {
                 setHotkeyTestError(null);
-                setIsHotkeyTestRunning(true);
                 try {
+                  const granted = await ensureInputMonitoringPermission();
+                  if (!granted) {
+                    setHotkeyTestError('Input Monitoring is required for global hotkeys.');
+                    return;
+                  }
+                  setIsHotkeyTestRunning(true);
                   await window.app.testDictationHotkey(hotkeyBinding);
                 } catch (error) {
                   setIsHotkeyTestRunning(false);
