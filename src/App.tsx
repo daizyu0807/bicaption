@@ -251,7 +251,7 @@ function getDictationHotkeyLabel(binding: DictationHotkeyBinding): string {
         return modifier;
     }
   });
-  const keyLabel = binding.keyCode === 49 ? 'Space' : `KeyCode ${binding.keyCode}`;
+  const keyLabel = binding.keyCode === 49 ? 'Space' : binding.keyCode === 36 ? 'Return' : `KeyCode ${binding.keyCode}`;
   return [...modifierLabels, keyLabel].join('+');
 }
 
@@ -468,6 +468,19 @@ function SettingsView({
     await window.app.startSession(buildSessionConfig(nextSettings, 'dictation'));
   }
 
+  function toggleHotkeyModifier(modifier: string, checked: boolean) {
+    const modifiers = checked
+      ? [...new Set([...draft.dictationHotkey.modifiers, modifier])]
+      : draft.dictationHotkey.modifiers.filter((item) => item !== modifier);
+    setDraft({
+      ...draft,
+      dictationHotkey: {
+        ...draft.dictationHotkey,
+        modifiers,
+      },
+    });
+  }
+
 
   return (
     <main className="settings-shell">
@@ -518,6 +531,61 @@ function SettingsView({
         <article className="panel">
           <h2>Dictation Hotkey Test</h2>
           <p className="model-hint">Binding: {getDictationHotkeyLabel(hotkeyBinding)}</p>
+          <div className="form-row-2">
+            <label>
+              Hotkey key
+              <select
+                value={draft.dictationHotkey.keyCode}
+                onChange={(event) => setDraft({
+                  ...draft,
+                  dictationHotkey: {
+                    ...draft.dictationHotkey,
+                    keyCode: Number(event.target.value),
+                  },
+                })}
+              >
+                <option value="49">Space</option>
+                <option value="36">Return</option>
+              </select>
+            </label>
+            <label>
+              Hotkey modifiers
+              <div className="form-row-2">
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={draft.dictationHotkey.modifiers.includes('cmd')}
+                    onChange={(event) => toggleHotkeyModifier('cmd', event.target.checked)}
+                  />
+                  Cmd
+                </label>
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={draft.dictationHotkey.modifiers.includes('shift')}
+                    onChange={(event) => toggleHotkeyModifier('shift', event.target.checked)}
+                  />
+                  Shift
+                </label>
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={draft.dictationHotkey.modifiers.includes('ctrl')}
+                    onChange={(event) => toggleHotkeyModifier('ctrl', event.target.checked)}
+                  />
+                  Ctrl
+                </label>
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={draft.dictationHotkey.modifiers.includes('alt')}
+                    onChange={(event) => toggleHotkeyModifier('alt', event.target.checked)}
+                  />
+                  Option
+                </label>
+              </div>
+            </label>
+          </div>
           <div className="hotkey-permissions">
             <div className="hotkey-permission-row">
               <span className="hotkey-permission-label">Accessibility</span>

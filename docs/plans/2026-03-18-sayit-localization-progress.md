@@ -58,6 +58,7 @@
   - renderer 已有獨立 dictation reducer 與最小觀察面板，不再和 subtitle caption reducer 共用狀態。
   - 已補 app 內手動 start/stop dictation，作為 fallback 與除錯入口。
   - hotkey 驅動的 dictation start/stop 已接進 main process，但正式 UX 與設定化綁定仍未完成。
+  - 已補 hotkey 設定 UI，可調整 key 與 modifiers。
 - `Phase 3.1 Sidecar Dictation Session`
   - 進行中
   - Python sidecar 已開始分流 `mode=dictation`，並在 finalize 前緩存 transcript。
@@ -90,8 +91,8 @@
 
 ## Next Actions
 
-1. 補 dictation hotkey 的正式設定 UI，而不只是沿用 settings schema。
-2. 視需要把焦點比對從 app 名稱細化到 window 層級。
+1. 視需要把焦點比對從 app 名稱細化到 window 層級。
+2. 補 hotkey 設定的驗證與衝突提示。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 
 ## Verification Notes
