@@ -1,6 +1,9 @@
 export type SessionState = 'idle' | 'connecting' | 'streaming' | 'error' | 'stopped';
+export type SessionMode = 'subtitle' | 'dictation';
 
 export interface CaptionConfig {
+  mode: SessionMode;
+  sessionId: string;
   deviceId: string;
   outputDeviceId: string;
   sourceLang: string;
@@ -15,7 +18,12 @@ export interface CaptionConfig {
   conditionOnPrev: boolean;
 }
 
-export interface PartialCaptionEvent {
+interface SessionScopedEvent {
+  mode: SessionMode;
+  sessionId: string;
+}
+
+export interface PartialCaptionEvent extends SessionScopedEvent {
   type: 'partial_caption';
   segmentId: string;
   sourceText: string;
@@ -23,7 +31,7 @@ export interface PartialCaptionEvent {
   updatedAtMs: number;
 }
 
-export interface FinalCaptionEvent {
+export interface FinalCaptionEvent extends SessionScopedEvent {
   type: 'final_caption';
   segmentId: string;
   sourceText: string;
@@ -32,22 +40,27 @@ export interface FinalCaptionEvent {
   endedAtMs: number;
   latencyMs: number;
   confidence?: number;
+  detectedLang?: string;
 }
 
-export interface MetricsEvent {
+export interface MetricsEvent extends SessionScopedEvent {
   type: 'metrics';
   inputLevel: number;
   processingLagMs: number;
   queueDepth: number;
 }
 
-export interface SessionStateEvent {
+export interface SessionStateEvent extends SessionScopedEvent {
   type: 'session_state';
   state: SessionState;
   detail?: string;
 }
 
-export interface ErrorEvent {
+export interface SessionStoppedAckEvent extends SessionScopedEvent {
+  type: 'session_stopped_ack';
+}
+
+export interface ErrorEvent extends SessionScopedEvent {
   type: 'error';
   code: string;
   message: string;
@@ -59,6 +72,7 @@ export type SidecarEvent =
   | FinalCaptionEvent
   | MetricsEvent
   | SessionStateEvent
+  | SessionStoppedAckEvent
   | ErrorEvent;
 
 export interface CaptionRecord {

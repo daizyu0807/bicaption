@@ -1,5 +1,5 @@
 import { startTransition, useEffect, useRef, useState } from 'react';
-import type { AppSettings, ModelDownloadProgress, ModelStatus, SidecarEvent } from '../electron/types.js';
+import type { AppSettings, CaptionConfig, ModelDownloadProgress, ModelStatus, SessionMode, SidecarEvent } from '../electron/types.js';
 import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from './caption-state.js';
 
 function isOverlayRoute() {
@@ -139,6 +139,25 @@ function useCaptionState() {
 function isTranslationEnabled(settings: AppSettings): boolean {
   if (settings.translateModel === 'disabled') return false;
   return settings.sourceLang === 'auto' || settings.targetLang !== settings.sourceLang;
+}
+
+function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle'): CaptionConfig {
+  return {
+    mode,
+    sessionId: crypto.randomUUID(),
+    deviceId: settings.deviceId,
+    outputDeviceId: settings.outputDeviceId,
+    sourceLang: settings.sourceLang,
+    targetLang: settings.targetLang,
+    sttModel: settings.sttModel,
+    translateModel: settings.translateModel,
+    chunkMs: settings.chunkMs,
+    partialStableMs: settings.partialStableMs,
+    beamSize: settings.beamSize,
+    bestOf: settings.bestOf,
+    vadFilter: settings.vadFilter,
+    conditionOnPrev: settings.conditionOnPrev,
+  };
 }
 
 function getSessionSummary(viewState: ReturnType<typeof useCaptionState>, settings: AppSettings) {
@@ -407,14 +426,13 @@ function SettingsView({
           onClick={async () => {
             if (isStreaming) {
               await window.app.stopSession();
-              await new Promise((r) => setTimeout(r, 300));
             }
-            const sessionDraft = {
+            const nextSettings = {
               ...draft,
               translateModel: isTranslationEnabled(draft) ? 'google' : 'disabled',
             };
-            await onSave(sessionDraft);
-            await window.app.startSession(sessionDraft);
+            await onSave(nextSettings);
+            await window.app.startSession(buildSessionConfig(nextSettings));
           }}
         >
           {!modelsReady ? '需要下載模型' : isStreaming ? '套用' : '開始'}

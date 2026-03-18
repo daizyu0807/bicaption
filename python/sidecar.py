@@ -32,11 +32,23 @@ WHISPER_SMALL_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-whisper-smal
 ZIPFORMER_KOREAN_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-zipformer-korean-2024-06-24")
 SILERO_VAD_MODEL = os.path.join(MODEL_BASE_DIR, "silero_vad.onnx")
 APPLE_STT_BIN = os.path.join(SCRIPT_DIR, "apple-stt")
+DEFAULT_EMIT_CONTEXT = {
+    "mode": "subtitle",
+    "sessionId": "bootstrap",
+}
+_emit_context = dict(DEFAULT_EMIT_CONTEXT)
 
 
 def emit(event: dict[str, Any]) -> None:
+    event.setdefault("mode", _emit_context["mode"])
+    event.setdefault("sessionId", _emit_context["sessionId"])
     sys.stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
     sys.stdout.flush()
+
+
+def set_emit_context(mode: str, session_id: str) -> None:
+    _emit_context["mode"] = mode
+    _emit_context["sessionId"] = session_id
 
 
 def now_ms() -> int:
@@ -208,6 +220,8 @@ class GoogleTranslationProvider(TranslationProvider):
 
 @dataclass
 class SessionConfig:
+    mode: str
+    session_id: str
     device_id: str
     output_device_id: str
     source_lang: str
@@ -220,6 +234,8 @@ class SessionConfig:
 
 @dataclass
 class TranscriptChunk:
+    mode: str
+    session_id: str
     segment_id: str
     source_text: str
     started_at_ms: int
@@ -369,6 +385,8 @@ class SenseVoiceTranscriber:
             self._segment_counter += 1
             duration_ms = int(len(speech_samples) / SAMPLE_RATE * 1000)
             results.append(TranscriptChunk(
+                mode=_emit_context["mode"],
+                session_id=_emit_context["sessionId"],
                 segment_id=f"seg-{self._segment_counter}",
                 source_text=text,
                 started_at_ms=base_time_ms,
@@ -444,6 +462,8 @@ class WhisperTinyEnTranscriber:
             self._segment_counter += 1
             duration_ms = int(len(speech_samples) / SAMPLE_RATE * 1000)
             results.append(TranscriptChunk(
+                mode=_emit_context["mode"],
+                session_id=_emit_context["sessionId"],
                 segment_id=f"seg-{self._segment_counter}",
                 source_text=text,
                 started_at_ms=base_time_ms,
@@ -519,6 +539,8 @@ class WhisperSmallTranscriber:
             self._segment_counter += 1
             duration_ms = int(len(speech_samples) / SAMPLE_RATE * 1000)
             results.append(TranscriptChunk(
+                mode=_emit_context["mode"],
+                session_id=_emit_context["sessionId"],
                 segment_id=f"seg-{self._segment_counter}",
                 source_text=text,
                 started_at_ms=base_time_ms,
@@ -591,6 +613,8 @@ class ZipformerKoreanTranscriber:
             self._segment_counter += 1
             duration_ms = int(len(speech_samples) / SAMPLE_RATE * 1000)
             results.append(TranscriptChunk(
+                mode=_emit_context["mode"],
+                session_id=_emit_context["sessionId"],
                 segment_id=f"seg-{self._segment_counter}",
                 source_text=text,
                 started_at_ms=base_time_ms,
@@ -931,6 +955,8 @@ class AppleSttTranscriber:
                         self._segment_counter += 1
                         seg_id = f"apple-seg-{self._segment_counter}"
                         results.append(TranscriptChunk(
+                            mode=_emit_context["mode"],
+                            session_id=_emit_context["sessionId"],
                             segment_id=seg_id,
                             source_text=delta,
                             started_at_ms=base_time_ms,
@@ -985,6 +1011,8 @@ class AppleSttTranscriber:
                 next_id = f"apple-seg-{self._segment_counter + 1}"
                 emit({
                     "type": "partial_caption",
+                    "mode": _emit_context["mode"],
+                    "sessionId": _emit_context["sessionId"],
                     "segmentId": next_id,
                     "sourceText": delta,
                     "startedAtMs": base_time_ms,
@@ -1026,6 +1054,8 @@ class AppleSttTranscriber:
                     self._segment_counter += 1
                     seg_id = f"apple-seg-{self._segment_counter}"
                     results.append(TranscriptChunk(
+                        mode=_emit_context["mode"],
+                        session_id=_emit_context["sessionId"],
                         segment_id=seg_id,
                         source_text=delta,
                         started_at_ms=base_time_ms,
@@ -1089,6 +1119,8 @@ class SidecarApp:
             self.stop_session()
 
         self.config = SessionConfig(
+            mode=str(payload.get("mode", "subtitle")),
+            session_id=str(payload.get("sessionId", f"session-{now_ms()}")),
             device_id=str(payload.get("deviceId", "blackhole")),
             output_device_id=str(payload.get("outputDeviceId", "")),
             source_lang=str(payload.get("sourceLang", "auto")),
@@ -1098,6 +1130,7 @@ class SidecarApp:
             chunk_ms=int(payload.get("chunkMs", 400)),
             partial_stable_ms=int(payload.get("partialStableMs", 500)),
         )
+        set_emit_context(self.config.mode, self.config.session_id)
         self.stop_event.clear()
         self.active = True
         emit({"type": "session_state", "state": "connecting", "detail": f"Connecting to {self.config.device_id}"})
@@ -1160,6 +1193,7 @@ class SidecarApp:
         if self.active:
             self.active = False
             emit({"type": "session_state", "state": "stopped"})
+        emit({"type": "session_stopped_ack"})
 
     def _should_translate(self, chunk: TranscriptChunk) -> bool:
         if self.translator is None or self.config is None:
@@ -1183,6 +1217,8 @@ class SidecarApp:
         print(f"[sidecar] final_caption id={chunk.segment_id} lang={chunk.detected_lang} text={source_text[:60]}", file=sys.stderr)
         emit({
             "type": "final_caption",
+            "mode": chunk.mode,
+            "sessionId": chunk.session_id,
             "segmentId": chunk.segment_id,
             "sourceText": source_text,
             "translatedText": "",
@@ -1288,6 +1324,8 @@ class SidecarApp:
                     translated = translated_items[index] if index < len(translated_items) else ""
                     emit({
                         "type": "final_caption",
+                        "mode": translated_chunk.mode,
+                        "sessionId": translated_chunk.session_id,
                         "segmentId": translated_chunk.segment_id,
                         "sourceText": translated_chunk.source_text,
                         "translatedText": translated,
@@ -1297,7 +1335,14 @@ class SidecarApp:
                         "confidence": translated_chunk.confidence,
                     })
             except Exception as error:
-                emit({"type": "error", "code": "translation_failed", "message": str(error), "recoverable": True})
+                emit({
+                    "type": "error",
+                    "mode": config.mode,
+                    "sessionId": config.session_id,
+                    "code": "translation_failed",
+                    "message": str(error),
+                    "recoverable": True,
+                })
 
 
 def _apply_model_dir(model_dir: str) -> None:

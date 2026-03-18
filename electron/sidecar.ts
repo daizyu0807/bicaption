@@ -26,6 +26,8 @@ interface SidecarCommand {
 
 export class SidecarBridge extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
+  private pendingStopPromise: Promise<void> | null = null;
+  private resolvePendingStop: (() => void) | null = null;
 
   start() {
     if (this.child) {
@@ -59,6 +61,8 @@ export class SidecarBridge extends EventEmitter {
       if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
         this.emit('error', {
           type: 'error',
+          mode: 'subtitle',
+          sessionId: 'sidecar-bridge',
           code: 'sidecar_stdout',
           message: trimmed,
           recoverable: true,
@@ -67,11 +71,16 @@ export class SidecarBridge extends EventEmitter {
       }
       try {
         const event = JSON.parse(trimmed) as SidecarEvent;
+        if (event.type === 'session_stopped_ack' || (event.type === 'session_state' && event.state === 'stopped')) {
+          this.finishPendingStop();
+        }
         this.emit(event.type, event);
         this.emit('event', event);
       } catch (error) {
         this.emit('error', {
           type: 'error',
+          mode: 'subtitle',
+          sessionId: 'sidecar-bridge',
           code: 'sidecar_parse_error',
           message: `${error instanceof Error ? error.message : 'Unknown sidecar parse error'}: ${trimmed.slice(0, 160)}`,
           recoverable: true,
@@ -89,6 +98,8 @@ export class SidecarBridge extends EventEmitter {
       }
       this.emit('error', {
         type: 'error',
+        mode: 'subtitle',
+        sessionId: 'sidecar-bridge',
         code: 'sidecar_stderr',
         message: line,
         recoverable: true,
@@ -97,8 +108,11 @@ export class SidecarBridge extends EventEmitter {
 
     child.on('exit', (code, signal) => {
       this.child = null;
+      this.finishPendingStop();
       this.emit('session_state', {
         type: 'session_state',
+        mode: 'subtitle',
+        sessionId: 'sidecar-exit',
         state: code === 0 ? 'stopped' : 'error',
         detail: signal ? `Exited via ${signal}` : `Exited with code ${String(code)}`,
       } satisfies SidecarEvent);
@@ -117,7 +131,17 @@ export class SidecarBridge extends EventEmitter {
   }
 
   stopSession() {
+    if (!this.child) {
+      return Promise.resolve();
+    }
+    if (this.pendingStopPromise) {
+      return this.pendingStopPromise;
+    }
+    this.pendingStopPromise = new Promise<void>((resolve) => {
+      this.resolvePendingStop = resolve;
+    });
     this.send({ command: 'stop_session', payload: {} });
+    return this.pendingStopPromise;
   }
 
   ping() {
@@ -125,8 +149,15 @@ export class SidecarBridge extends EventEmitter {
   }
 
   dispose() {
-    this.stopSession();
+    void this.stopSession();
     this.child?.kill('SIGTERM');
     this.child = null;
+    this.finishPendingStop();
+  }
+
+  private finishPendingStop() {
+    this.resolvePendingStop?.();
+    this.resolvePendingStop = null;
+    this.pendingStopPromise = null;
   }
 }

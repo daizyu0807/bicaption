@@ -49,7 +49,7 @@ function initSaveFile() {
 }
 
 function appendCaption(event: SidecarEvent) {
-  if (!saveFilePath || event.type !== 'final_caption') {
+  if (!saveFilePath || event.type !== 'final_caption' || event.mode !== 'subtitle') {
     return;
   }
   const settings = loadSettings();
@@ -165,17 +165,21 @@ function persistOverlayBounds() {
 
 function bindBridge() {
   bridge.on('partial_caption', (event: SidecarEvent) => {
-    setOverlayVisible(true);
+    if (event.type === 'partial_caption' && event.mode === 'subtitle') {
+      setOverlayVisible(true);
+    }
     sendToWindows('sidecar:event', event);
   });
   bridge.on('final_caption', (event: SidecarEvent) => {
-    setOverlayVisible(true);
+    if (event.type === 'final_caption' && event.mode === 'subtitle') {
+      setOverlayVisible(true);
+    }
     appendCaption(event);
     sendToWindows('sidecar:event', event);
   });
   bridge.on('metrics', forwardEvent);
   bridge.on('session_state', (event: SidecarEvent) => {
-    if (event.type === 'session_state') {
+    if (event.type === 'session_state' && event.mode === 'subtitle') {
       if (event.state === 'streaming') {
         setOverlayVisible(true);
       } else {
@@ -184,8 +188,9 @@ function bindBridge() {
     }
     sendToWindows('sidecar:event', event);
   });
+  bridge.on('session_stopped_ack', forwardEvent);
   bridge.on('error', (event: SidecarEvent) => {
-    if (event.type === 'error' && !event.recoverable) {
+    if (event.type === 'error' && event.mode === 'subtitle' && !event.recoverable) {
       setOverlayVisible(false);
     }
     sendToWindows('sidecar:event', event);
@@ -219,13 +224,17 @@ app.whenReady().then(() => {
     return settings;
   });
   ipcMain.handle('session:start', (_event, config: CaptionConfig) => {
-    overlaySuppressed = false;
-    initSaveFile();
+    overlaySuppressed = config.mode === 'subtitle' ? false : overlaySuppressed;
+    if (config.mode === 'subtitle') {
+      initSaveFile();
+    } else {
+      saveFilePath = null;
+    }
     bridge.startSession(config);
     return { ok: true };
   });
-  ipcMain.handle('session:stop', () => {
-    bridge.stopSession();
+  ipcMain.handle('session:stop', async () => {
+    await bridge.stopSession();
     return { ok: true };
   });
   ipcMain.handle('session:devices', async () => {

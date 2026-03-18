@@ -5,6 +5,7 @@ export interface CaptionViewState {
   captions: CaptionRecord[];
   partial: CaptionRecord | null;
   sessionState: string;
+  activeSessionId: string | null;
   metrics: {
     inputLevel: number;
     processingLagMs: number;
@@ -17,6 +18,7 @@ export const initialViewState: CaptionViewState = {
   captions: [],
   partial: null,
   sessionState: 'idle',
+  activeSessionId: null,
   metrics: {
     inputLevel: 0,
     processingLagMs: 0,
@@ -26,8 +28,15 @@ export const initialViewState: CaptionViewState = {
 };
 
 export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent): CaptionViewState {
+  if (event.mode !== 'subtitle') {
+    return state;
+  }
+
   switch (event.type) {
     case 'partial_caption':
+      if (!state.activeSessionId || event.sessionId !== state.activeSessionId) {
+        return state;
+      }
       return {
         ...state,
         partial: {
@@ -39,6 +48,9 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
         },
       };
     case 'final_caption': {
+      if (!state.activeSessionId || event.sessionId !== state.activeSessionId) {
+        return state;
+      }
       // When the first final_caption arrives (translatedText=""), preserve
       // any existing translation so subtitles don't flicker between the
       // initial emit and the translation-worker emit.
@@ -61,6 +73,9 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
       };
     }
     case 'metrics':
+      if (!state.activeSessionId || event.sessionId !== state.activeSessionId) {
+        return state;
+      }
       return {
         ...state,
         metrics: {
@@ -70,14 +85,30 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
         },
       };
     case 'session_state':
+      if (event.state === 'connecting') {
+        return {
+          ...state,
+          captions: [],
+          partial: null,
+          activeSessionId: event.sessionId,
+          sessionState: event.state,
+          lastError: null,
+        };
+      }
+      if (state.activeSessionId && event.sessionId !== state.activeSessionId) {
+        return state;
+      }
       return {
         ...state,
-        // Clear captions when a new session starts
-        ...(event.state === 'connecting' ? { captions: [], partial: null } : {}),
         sessionState: event.state,
         lastError: event.state === 'error' ? event.detail ?? 'Unknown error' : state.lastError,
       };
+    case 'session_stopped_ack':
+      return state;
     case 'error':
+      if (state.activeSessionId && event.sessionId !== state.activeSessionId) {
+        return state;
+      }
       return {
         ...state,
         lastError: event.message,

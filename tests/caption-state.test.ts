@@ -3,8 +3,16 @@ import assert from 'node:assert/strict';
 import { initialViewState, reduceSidecarEvent } from '../src/caption-state.js';
 
 test('partial captions replace current partial state', () => {
-  const state = reduceSidecarEvent(initialViewState, {
+  const connected = reduceSidecarEvent(initialViewState, {
+    type: 'session_state',
+    mode: 'subtitle',
+    sessionId: 'session-1',
+    state: 'connecting',
+  });
+  const state = reduceSidecarEvent(connected, {
     type: 'partial_caption',
+    mode: 'subtitle',
+    sessionId: 'session-1',
     segmentId: 'seg-1',
     sourceText: 'Hello',
     startedAtMs: 1,
@@ -16,8 +24,16 @@ test('partial captions replace current partial state', () => {
 });
 
 test('final captions are retained and clear matching partial', () => {
-  const withPartial = reduceSidecarEvent(initialViewState, {
+  const connected = reduceSidecarEvent(initialViewState, {
+    type: 'session_state',
+    mode: 'subtitle',
+    sessionId: 'session-1',
+    state: 'connecting',
+  });
+  const withPartial = reduceSidecarEvent(connected, {
     type: 'partial_caption',
+    mode: 'subtitle',
+    sessionId: 'session-1',
     segmentId: 'seg-1',
     sourceText: 'Hel',
     startedAtMs: 1,
@@ -25,6 +41,8 @@ test('final captions are retained and clear matching partial', () => {
   });
   const state = reduceSidecarEvent(withPartial, {
     type: 'final_caption',
+    mode: 'subtitle',
+    sessionId: 'session-1',
     segmentId: 'seg-1',
     sourceText: 'Hello',
     translatedText: '你好',
@@ -35,4 +53,26 @@ test('final captions are retained and clear matching partial', () => {
 
   assert.equal(state.partial, null);
   assert.equal(state.captions[0]?.translatedText, '你好');
+});
+
+test('non-subtitle events are ignored by caption reducer', () => {
+  const connected = reduceSidecarEvent(initialViewState, {
+    type: 'session_state',
+    mode: 'subtitle',
+    sessionId: 'session-1',
+    state: 'connecting',
+  });
+  const state = reduceSidecarEvent(connected, {
+    type: 'final_caption',
+    mode: 'dictation',
+    sessionId: 'session-2',
+    segmentId: 'seg-1',
+    sourceText: 'Hello',
+    translatedText: '',
+    startedAtMs: 1,
+    endedAtMs: 2,
+    latencyMs: 1,
+  });
+
+  assert.deepEqual(state, connected);
 });
