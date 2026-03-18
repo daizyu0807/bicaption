@@ -43,7 +43,7 @@ function OverlayView({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; winX: number; winY: number } | null>(null);
   const dictationPrompt = getDictationPrompt(dictationState, showDictationResult);
-  const isPromptOnlyMode = Boolean(dictationPrompt) && !hasVisibleCaptions;
+  const isDictationOverlayMode = Boolean(dictationPrompt);
 
   useEffect(() => {
     const el = stackRef.current;
@@ -117,10 +117,10 @@ function OverlayView({
             <span aria-hidden="true">{isCollapsed ? '+' : '−'}</span>
           </button>
         </div>
-        <span className="overlay-title">{isPromptOnlyMode ? '語音輸入' : 'BiCaption'}</span>
+        <span className="overlay-title">{isDictationOverlayMode ? '語音輸入' : 'BiCaption'}</span>
       </header>
       {!isCollapsed && (
-        <section className={`overlay-body${isPromptOnlyMode ? ' overlay-body-prompt-only' : ''}`} ref={stackRef}>
+        <section className={`overlay-body${isDictationOverlayMode ? ' overlay-body-prompt-only' : ''}`} ref={stackRef}>
           {dictationPrompt && (
             <div className={`dictation-prompt dictation-prompt-${dictationPrompt.tone} no-drag`}>
               <span className="dictation-prompt-dot" aria-hidden="true">
@@ -142,18 +142,18 @@ function OverlayView({
               </div>
             </div>
           )}
-          {viewState.captions.map((caption) => (
+          {!isDictationOverlayMode ? viewState.captions.map((caption) => (
             <div key={caption.segmentId} className="caption-pair no-drag">
               <p className="caption-line">{caption.sourceText}</p>
               {translationEnabled && caption.translatedText ? (
                 <p className="caption-line caption-translation">{caption.translatedText}</p>
               ) : null}
             </div>
-          ))}
-          {viewState.partial ? (
+          )) : null}
+          {!isDictationOverlayMode && viewState.partial ? (
             <p className="caption-line caption-partial no-drag">{viewState.partial.sourceText}</p>
           ) : null}
-          {!hasVisibleCaptions && !dictationPrompt ? (
+          {!isDictationOverlayMode && !hasVisibleCaptions ? (
             <>
               <p className="caption-line caption-hint no-drag">Listening for speech...</p>
               <p className="caption-line caption-hint no-drag">Confirm input level is active, then captions appear here.</p>
