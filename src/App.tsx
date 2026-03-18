@@ -15,6 +15,7 @@ import type {
 } from '../electron/types.js';
 import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from './caption-state.js';
 import { initialDictationViewState, reduceDictationEvent } from './dictation-state.js';
+import { getDictationHotkeyLabel, validateDictationHotkey } from './dictation-hotkey.js';
 
 function isOverlayRoute() {
   return window.location.hash === '#overlay';
@@ -236,25 +237,6 @@ function getDownloadLabel(progress: ModelDownloadProgress | null): string {
   return `下載 ${name}…`;
 }
 
-function getDictationHotkeyLabel(binding: DictationHotkeyBinding): string {
-  const modifierLabels = binding.modifiers.map((modifier) => {
-    switch (modifier) {
-      case 'cmd':
-        return 'Cmd';
-      case 'shift':
-        return 'Shift';
-      case 'ctrl':
-        return 'Ctrl';
-      case 'alt':
-        return 'Option';
-      default:
-        return modifier;
-    }
-  });
-  const keyLabel = binding.keyCode === 49 ? 'Space' : binding.keyCode === 36 ? 'Return' : `KeyCode ${binding.keyCode}`;
-  return [...modifierLabels, keyLabel].join('+');
-}
-
 function getDictationHotkeyEventLabel(event: DictationHotkeyEvent | null): string {
   if (!event) {
     return 'No hotkey events yet.';
@@ -360,6 +342,7 @@ function SettingsView({
     || ['recording', 'capturing', 'processing'].includes(dictationState.dictationState);
   const translationOn = isTranslationEnabled(draft);
   const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
+  const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
   const modelReadyMap: Record<string, boolean> = {
     sensevoice: localModelStatus?.sensevoice ?? false,
     'apple-stt': true,  // No model download needed — uses macOS built-in
@@ -531,6 +514,8 @@ function SettingsView({
         <article className="panel">
           <h2>Dictation Hotkey Test</h2>
           <p className="model-hint">Binding: {getDictationHotkeyLabel(hotkeyBinding)}</p>
+          {hotkeyValidation.error && <p className="error-text">{hotkeyValidation.error}</p>}
+          {!hotkeyValidation.error && hotkeyValidation.warning && <p className="model-hint">{hotkeyValidation.warning}</p>}
           <div className="form-row-2">
             <label>
               Hotkey key
@@ -603,7 +588,7 @@ function SettingsView({
           <div className="hotkey-actions">
             <button
               className="secondary"
-              disabled={isHotkeyTestRunning}
+              disabled={isHotkeyTestRunning || !hotkeyValidation.isValid}
               onClick={async () => {
                 setHotkeyTestError(null);
                 setIsHotkeyTestRunning(true);
@@ -814,7 +799,7 @@ function SettingsView({
 
       <footer className="bottom-bar">
         <button
-          disabled={!modelsReady}
+          disabled={!modelsReady || !hotkeyValidation.isValid}
           onClick={async () => {
             if (isStreaming) {
               await window.app.stopSession();

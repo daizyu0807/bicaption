@@ -59,6 +59,7 @@
   - 已補 app 內手動 start/stop dictation，作為 fallback 與除錯入口。
   - hotkey 驅動的 dictation start/stop 已接進 main process，但正式 UX 與設定化綁定仍未完成。
   - 已補 hotkey 設定 UI，可調整 key 與 modifiers。
+  - 已補 hotkey 驗證與常見系統快捷鍵衝突提示。
 - `Phase 3.1 Sidecar Dictation Session`
   - 進行中
   - Python sidecar 已開始分流 `mode=dictation`，並在 finalize 前緩存 transcript。
@@ -92,7 +93,7 @@
 ## Next Actions
 
 1. 視需要把焦點比對從 app 名稱細化到 window 層級。
-2. 補 hotkey 設定的驗證與衝突提示。
+2. 視需要補更完整的 hotkey 衝突名單與禁止儲存策略。
 3. 最後再決定是否往 `Phase 5.2 Auto-paste Safety Gate` 延伸。
 
 ## Verification Notes
