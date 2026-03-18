@@ -190,6 +190,8 @@ function bindBridge() {
     }
     sendToWindows('sidecar:event', event);
   });
+  bridge.on('dictation_state', forwardEvent);
+  bridge.on('dictation_final', forwardEvent);
   bridge.on('session_stopped_ack', forwardEvent);
   bridge.on('error', (event: SidecarEvent) => {
     if (event.type === 'error' && event.mode === 'subtitle' && !event.recoverable) {

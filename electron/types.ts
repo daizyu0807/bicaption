@@ -69,6 +69,21 @@ export interface SessionStateEvent extends SessionScopedEvent {
   detail?: string;
 }
 
+export interface DictationStateEvent extends SessionScopedEvent {
+  type: 'dictation_state';
+  state: 'idle' | 'recording' | 'capturing' | 'processing' | 'done' | 'stopped' | 'error';
+  detail?: string;
+}
+
+export interface DictationFinalEvent extends SessionScopedEvent {
+  type: 'dictation_final';
+  text: string;
+  chunkCount?: number;
+  startedAtMs: number;
+  endedAtMs: number;
+  latencyMs: number;
+}
+
 export interface SessionStoppedAckEvent extends SessionScopedEvent {
   type: 'session_stopped_ack';
 }
@@ -85,6 +100,8 @@ export type SidecarEvent =
   | FinalCaptionEvent
   | MetricsEvent
   | SessionStateEvent
+  | DictationStateEvent
+  | DictationFinalEvent
   | SessionStoppedAckEvent
   | ErrorEvent;
 
