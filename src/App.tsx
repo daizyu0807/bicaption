@@ -795,7 +795,7 @@ function SettingsView({
           <label>
             系統音訊（Loopback）
             <select value={draft.outputDeviceId} onChange={(event) => setDraft({ ...draft, outputDeviceId: event.target.value })}>
-              <option value="">不使用</option>
+              <option value="">系統預設</option>
               {loopbackDevices.map((device) => (
                 <option key={device.id} value={device.id}>
                   {device.label}
