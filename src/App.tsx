@@ -262,25 +262,25 @@ function getDictationHotkeyEventLabel(event: DictationHotkeyEvent | null): strin
 
 function getPermissionLabel(status: { trusted: boolean } | { available: boolean; trusted: boolean } | null, kind: 'accessibility' | 'input-monitoring') {
   if (!status) {
-    return 'Checking…';
+    return '檢查中';
   }
   if ('available' in status && !status.available) {
-    return 'Unavailable';
+    return '無法使用';
   }
   if (status.trusted) {
-    return 'Granted';
+    return '已允許';
   }
-  return kind === 'accessibility' ? 'Denied' : 'Not granted';
+  return kind === 'accessibility' ? '未允許' : '未授權';
 }
 
 function getDictationOutputActionLabel(action: DictationOutputAction) {
   switch (action) {
     case 'copy':
-      return 'Copy to clipboard';
+      return '複製到剪貼簿';
     case 'paste':
-      return 'Paste to foreground app';
+      return '貼到目前視窗';
     case 'copy-and-paste':
-      return 'Copy and paste';
+      return '先複製再貼上';
   }
 }
 
@@ -570,7 +570,7 @@ function SettingsView({
         {activeSettingsTab === 'dictation' && (
         <div className="dictation-grid">
         <article className="panel panel-compact">
-          <h2>Dictation Hotkey</h2>
+          <h2>語音輸入快捷鍵</h2>
           <label>
             輸入裝置（麥克風）
             <select
@@ -586,11 +586,11 @@ function SettingsView({
           </label>
           <div className="dictation-summary-grid">
             <div className="hotkey-event-box">
-              <span className="hotkey-event-label">Binding</span>
+              <span className="hotkey-event-label">快捷鍵</span>
               <span className="hotkey-event-value">{getDictationHotkeyLabel(hotkeyBinding)}</span>
             </div>
             <div className="hotkey-event-box">
-              <span className="hotkey-event-label">Latest event</span>
+              <span className="hotkey-event-label">最近事件</span>
               <span className="hotkey-event-value">{getDictationHotkeyEventLabel(hotkeyEvent)}</span>
             </div>
           </div>
@@ -691,7 +691,7 @@ function SettingsView({
                   }
                 }}
               >
-                Request
+                申請
               </button>
             </div>
             {inputMonitoringPermission?.detail && !inputMonitoringPermission.trusted && (
@@ -718,7 +718,7 @@ function SettingsView({
                 }
               }}
             >
-              Start Test
+              開始測試
             </button>
             <button
               className="secondary"
@@ -731,29 +731,29 @@ function SettingsView({
                 }
               }}
             >
-              Stop Test
+              停止測試
             </button>
           </div>
           {hotkeyTestError && <p className="error-text">{hotkeyTestError}</p>}
         </article>
         <article className="panel panel-compact">
-          <h2>Dictation</h2>
+          <h2>語音輸入</h2>
           <div className="dictation-summary-grid">
             <div className="hotkey-event-box">
-              <span className="hotkey-event-label">Session</span>
+              <span className="hotkey-event-label">工作階段</span>
               <span className="hotkey-event-value">{dictationState.sessionState}</span>
             </div>
             <div className="hotkey-event-box">
-              <span className="hotkey-event-label">Latest state</span>
+              <span className="hotkey-event-label">目前狀態</span>
               <span className="hotkey-event-value">{getDictationStateLabel(dictationEvent, dictationState)}</span>
             </div>
           </div>
           <div className="hotkey-event-box">
-            <span className="hotkey-event-label">Latest transcript</span>
+            <span className="hotkey-event-label">最近辨識結果</span>
             <span className="hotkey-event-value">{getDictationFinalLabel(dictationFinalEvent, dictationState)}</span>
           </div>
           <label>
-            Dictation output
+            輸出方式
             <select
               value={draft.dictationOutputAction}
               onChange={(event) => setDraft({ ...draft, dictationOutputAction: event.target.value as DictationOutputAction })}
@@ -765,12 +765,12 @@ function SettingsView({
           </label>
           {draft.dictationOutputAction !== 'copy' && (
             <p className="model-hint">
-              Paste requires Accessibility permission. If paste fails, the transcript stays in clipboard.
+              自動貼上需要 Accessibility 權限。若貼上失敗，文字仍會保留在剪貼簿。
             </p>
           )}
           {dictationOutputStatus && (
             <div className="hotkey-event-box">
-              <span className="hotkey-event-label">Output</span>
+              <span className="hotkey-event-label">輸出結果</span>
               <span className="hotkey-event-value">
                 {dictationOutputStatus.status}
                 {dictationOutputStatus.detail ? ` - ${dictationOutputStatus.detail}` : ''}
@@ -948,9 +948,6 @@ function SettingsView({
               }}
             >
               儲存語音輸入設定
-            </button>
-            <button className="secondary" disabled={!isDictating} onClick={() => window.app.stopSession()}>
-              停止 Dictation
             </button>
           </>
         )}
