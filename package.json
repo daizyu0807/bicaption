@@ -18,6 +18,7 @@
     "build": "npm run build:electron && npm run build:renderer",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build:renderer": "vite build",
+    "build:global-hotkey": "bash scripts/build-global-hotkey.sh",
     "build:sidecar": "bash scripts/build-sidecar.sh",
     "dist": "npm run build && npm run build:sidecar && electron-builder --mac",
     "dist:unsigned": "npm run build && npm run build:sidecar && electron-builder --mac --config.mac.identity=null",

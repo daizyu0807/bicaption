@@ -22,6 +22,21 @@ export interface SidecarSpawnConfig {
   args: string[];
 }
 
+export function getGlobalHotkeyCommand(): SidecarSpawnConfig {
+  if (isPackaged()) {
+    const helperBin = join(process.resourcesPath!, 'sidecar', 'global-hotkey');
+    return {
+      command: helperBin,
+      args: [],
+    };
+  }
+
+  return {
+    command: join(projectRoot, 'python', 'global-hotkey'),
+    args: [],
+  };
+}
+
 export function isPackaged(): boolean {
   return app.isPackaged;
 }

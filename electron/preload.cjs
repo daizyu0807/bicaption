@@ -24,5 +24,7 @@ contextBridge.exposeInMainWorld('app', {
   checkModels: () => ipcRenderer.invoke('models:check'),
   downloadModels: () => ipcRenderer.invoke('models:download'),
   downloadModel: (modelKey) => ipcRenderer.invoke('models:download-one', modelKey),
+  checkAccessibilityPermission: () => ipcRenderer.invoke('permissions:check-accessibility'),
+  checkInputMonitoringPermission: () => ipcRenderer.invoke('permissions:check-input-monitoring'),
   subscribe: (eventName, handler) => on(eventName, handler),
 });

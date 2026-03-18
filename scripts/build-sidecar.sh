@@ -53,6 +53,15 @@ else
   echo "[build-sidecar] WARNING: apple-stt not found, SFSpeechRecognizer won't work in packaged build"
 fi
 
+GLOBAL_HOTKEY="$PYTHON_DIR/global-hotkey"
+GLOBAL_HOTKEY_FLAG=""
+if [ -f "$GLOBAL_HOTKEY" ]; then
+  GLOBAL_HOTKEY_FLAG="--add-binary=$GLOBAL_HOTKEY:."
+  echo "[build-sidecar] Including global-hotkey binary"
+else
+  echo "[build-sidecar] WARNING: global-hotkey not found, native dictation hotkey won't work in packaged build"
+fi
+
 "$VENV_PYTHON" -m PyInstaller \
   --onedir \
   --name bicaption-sidecar \
@@ -74,6 +83,7 @@ fi
   $SHERPA_COLLECT \
   $SHERPA_NATIVE \
   $APPLE_STT_FLAG \
+  $GLOBAL_HOTKEY_FLAG \
   sidecar.py
 
 BINARY="$PYTHON_DIR/dist/bicaption-sidecar/bicaption-sidecar"

@@ -28,6 +28,8 @@ declare global {
       checkModels(): Promise<ModelStatus>;
       downloadModels(): Promise<{ ok: boolean }>;
       downloadModel(modelKey: string): Promise<{ ok: boolean }>;
+      checkAccessibilityPermission(): Promise<{ trusted: boolean; status: string }>;
+      checkInputMonitoringPermission(): Promise<{ trusted: boolean; available: boolean; detail?: string }>;
       subscribe<K extends keyof SubscribeMap>(
         eventName: K,
         handler: (payload: SubscribeMap[K]) => void,

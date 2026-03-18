@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { SidecarBridge } from './sidecar.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
-import { getSidecarCommand, getModelDir, getSpawnCwd } from './paths.js';
+import { getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
 import type { AppSettings, CaptionConfig, ModelDownloadProgress, OverlayBounds, SidecarEvent } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -213,6 +213,42 @@ async function ensureMicrophoneAccess() {
   return systemPreferences.askForMediaAccess('microphone');
 }
 
+function checkAccessibilityPermission() {
+  if (process.platform !== 'darwin') {
+    return { trusted: true, status: 'not-applicable' };
+  }
+  const trusted = systemPreferences.isTrustedAccessibilityClient(false);
+  return {
+    trusted,
+    status: trusted ? 'granted' : 'denied',
+  };
+}
+
+function checkInputMonitoringPermission() {
+  if (process.platform !== 'darwin') {
+    return { trusted: true, available: true, detail: 'not-applicable' };
+  }
+
+  const { command, args } = getGlobalHotkeyCommand();
+  try {
+    const output = execFileSync(command, [...args, '--check-access'], {
+      cwd: getSpawnCwd(),
+      encoding: 'utf-8',
+    }).trim();
+    const parsed = JSON.parse(output) as { trusted?: boolean };
+    return {
+      trusted: Boolean(parsed.trusted),
+      available: true,
+    };
+  } catch (error) {
+    return {
+      trusted: false,
+      available: false,
+      detail: error instanceof Error ? error.message : 'Unknown global-hotkey helper error',
+    };
+  }
+}
+
 app.whenReady().then(() => {
   createSettingsWindow();
   createOverlayWindow();
@@ -223,6 +259,8 @@ app.whenReady().then(() => {
     sendToWindows('settings:changed', settings);
     return settings;
   });
+  ipcMain.handle('permissions:check-accessibility', () => checkAccessibilityPermission());
+  ipcMain.handle('permissions:check-input-monitoring', () => checkInputMonitoringPermission());
   ipcMain.handle('session:start', (_event, config: CaptionConfig) => {
     overlaySuppressed = config.mode === 'subtitle' ? false : overlaySuppressed;
     if (config.mode === 'subtitle') {
