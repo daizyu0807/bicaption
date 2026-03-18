@@ -235,6 +235,13 @@ button:disabled {
   gap: 6px;
 }
 
+.modifier-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+}
+
 .toggle-row {
   display: flex;
   align-items: center;

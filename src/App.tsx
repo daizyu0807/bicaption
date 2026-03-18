@@ -470,8 +470,8 @@ function SettingsView({
               </select>
             </label>
             <label>
-              Hotkey modifiers
-              <div className="form-row-2">
+              快捷鍵組合鍵
+              <div className="modifier-grid">
                 <label className="toggle-row">
                   <input
                     type="checkbox"
