@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
 import type { Readable } from 'node:stream';
 import { createInterface } from 'node:readline';
 import type { DictationHotkeyBinding, DictationHotkeyEvent } from './types.js';
@@ -12,6 +13,13 @@ export class NativeHotkeyBridge extends EventEmitter {
     this.stopListening();
 
     const { command, args } = getGlobalHotkeyCommand();
+    if (!existsSync(command)) {
+      this.emit('event', {
+        type: 'error',
+        message: `Missing global-hotkey helper at ${command}. Rebuild and repackage the app.`,
+      } satisfies DictationHotkeyEvent);
+      return;
+    }
     const child = spawn(command, [
       ...args,
       '--listen',
@@ -52,6 +60,14 @@ export class NativeHotkeyBridge extends EventEmitter {
       this.emit('event', {
         type: 'error',
         message: trimmed,
+      } satisfies DictationHotkeyEvent);
+    });
+
+    child.on('error', (error) => {
+      this.child = null;
+      this.emit('event', {
+        type: 'error',
+        message: error.message,
       } satisfies DictationHotkeyEvent);
     });
 

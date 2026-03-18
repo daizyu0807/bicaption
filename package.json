@@ -20,8 +20,8 @@
     "build:renderer": "vite build",
     "build:global-hotkey": "bash scripts/build-global-hotkey.sh",
     "build:sidecar": "bash scripts/build-sidecar.sh",
-    "dist": "npm run build && npm run build:sidecar && electron-builder --mac",
-    "dist:unsigned": "npm run build && npm run build:sidecar && electron-builder --mac --config.mac.identity=null",
+    "dist": "npm run build && npm run build:global-hotkey && npm run build:sidecar && electron-builder --mac",
+    "dist:unsigned": "npm run build && npm run build:global-hotkey && npm run build:sidecar && electron-builder --mac --config.mac.identity=null",
     "type-check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
     "test": "tsx --test tests/**/*.test.ts",
     "start": "electron ."
@@ -57,6 +57,10 @@
       {
         "from": "python/dist/bicaption-sidecar",
         "to": "sidecar"
+      },
+      {
+        "from": "python/global-hotkey",
+        "to": "sidecar/global-hotkey"
       }
     ],
     "mac": {

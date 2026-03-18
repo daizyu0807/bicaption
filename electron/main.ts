@@ -484,6 +484,13 @@ function checkInputMonitoringPermission() {
   }
 
   const { command, args } = getGlobalHotkeyCommand();
+  if (!existsSync(command)) {
+    return {
+      trusted: false,
+      available: false,
+      detail: `Missing global-hotkey helper at ${command}`,
+    };
+  }
   try {
     const output = execFileSync(command, [...args, '--check-access'], {
       cwd: getSpawnCwd(),
@@ -509,6 +516,13 @@ function requestInputMonitoringPermission() {
   }
 
   const { command, args } = getGlobalHotkeyCommand();
+  if (!existsSync(command)) {
+    return {
+      trusted: false,
+      available: false,
+      detail: `Missing global-hotkey helper at ${command}`,
+    };
+  }
   try {
     const output = execFileSync(command, [...args, '--request-access'], {
       cwd: getSpawnCwd(),
@@ -528,6 +542,14 @@ function requestInputMonitoringPermission() {
   }
 }
 
+async function openInputMonitoringSettings() {
+  if (process.platform !== 'darwin') {
+    return { ok: false };
+  }
+  await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent');
+  return { ok: true };
+}
+
 app.whenReady().then(() => {
   createSettingsWindow();
   createOverlayWindow();
@@ -544,6 +566,7 @@ app.whenReady().then(() => {
   ipcMain.handle('permissions:check-accessibility', () => checkAccessibilityPermission());
   ipcMain.handle('permissions:check-input-monitoring', () => checkInputMonitoringPermission());
   ipcMain.handle('permissions:request-input-monitoring', () => requestInputMonitoringPermission());
+  ipcMain.handle('permissions:open-input-monitoring', () => openInputMonitoringSettings());
   ipcMain.handle('dictation:test-hotkey', (_event, binding: DictationHotkeyBinding) => {
     hotkeyListenerMode = 'test';
     nativeHotkeyBridge.startListening(binding);

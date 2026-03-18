@@ -412,8 +412,19 @@ function SettingsView({
     if (current.trusted) {
       return true;
     }
+    if (!current.available) {
+      setHotkeyTestError(current.detail ?? 'Global hotkey helper is unavailable.');
+      return false;
+    }
     const requested = await window.app.requestInputMonitoringPermission();
     setInputMonitoringPermission(requested);
+    if (!requested.available) {
+      setHotkeyTestError(requested.detail ?? 'Global hotkey helper is unavailable.');
+      return false;
+    }
+    if (!requested.trusted) {
+      await window.app.openInputMonitoringSettings();
+    }
     return requested.trusted;
   }
 
@@ -463,7 +474,7 @@ function SettingsView({
   async function startManualDictation() {
     const granted = await ensureInputMonitoringPermission();
     if (!granted) {
-      setHotkeyTestError('Input Monitoring is required for dictation hotkeys. Approve the app in System Settings and reopen it if needed.');
+      setHotkeyTestError('Input Monitoring settings were opened. Enable the app there before using hold-to-talk.');
       return;
     }
     if (isStreaming || isDictating) {
@@ -645,7 +656,7 @@ function SettingsView({
                   try {
                     const granted = await ensureInputMonitoringPermission();
                     if (!granted) {
-                      setHotkeyTestError('Input Monitoring is still not granted. Approve the prompt in System Settings, then reopen the app if needed.');
+                      setHotkeyTestError('Input Monitoring settings were opened. Enable the app there, then reopen the app if needed.');
                     } else {
                       await refreshPermissionState();
                     }
@@ -657,6 +668,9 @@ function SettingsView({
                 Request
               </button>
             </div>
+            {inputMonitoringPermission?.detail && !inputMonitoringPermission.trusted && (
+              <p className="error-text">{inputMonitoringPermission.detail}</p>
+            )}
           </div>
           <div className="hotkey-actions">
             <button
@@ -667,7 +681,7 @@ function SettingsView({
                 try {
                   const granted = await ensureInputMonitoringPermission();
                   if (!granted) {
-                    setHotkeyTestError('Input Monitoring is required for global hotkeys.');
+                    setHotkeyTestError('Input Monitoring settings were opened. Enable the app there before testing global hotkeys.');
                     return;
                   }
                   setIsHotkeyTestRunning(true);
