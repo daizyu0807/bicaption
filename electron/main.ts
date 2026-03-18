@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Tray, nativeImage, screen, shell, systemPreferences } from 'electron';
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -34,10 +34,18 @@ let pendingDictationPasteTarget: { appName: string; windowTitle: string | null }
 let dictationOverlayHideTimeout: NodeJS.Timeout | null = null;
 let overlayMode: 'hidden' | 'subtitle' | 'dictation' = 'hidden';
 let subtitleOverlayBoundsCache: OverlayBounds | null = null;
+let tray: Tray | null = null;
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
 const modelDownloader = new ModelDownloader(getModelDir());
+
+function getTrayIconPath() {
+  if (isPackaged) {
+    return join(process.resourcesPath, 'icon.icns');
+  }
+  return join(projectRoot, 'build', 'icon.icns');
+}
 
 function formatSaveFilename(date: Date): string {
   const yy = String(date.getFullYear()).slice(2);
@@ -396,6 +404,7 @@ function createSettingsWindow() {
     if (!isQuitting) {
       e.preventDefault();
       settingsWindow?.hide();
+      app.dock?.hide();
     }
   });
 
@@ -403,6 +412,80 @@ function createSettingsWindow() {
   if (isDev && process.env.OPEN_DEVTOOLS === '1') {
     settingsWindow.webContents.openDevTools({ mode: 'detach' });
   }
+}
+
+function showSettingsWindow() {
+  if (!settingsWindow || settingsWindow.isDestroyed()) {
+    createSettingsWindow();
+  }
+  app.dock?.show();
+  settingsWindow?.show();
+  settingsWindow?.focus();
+}
+
+function rebuildTrayMenu() {
+  if (!tray) {
+    return;
+  }
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '打開設定',
+      click: () => showSettingsWindow(),
+    },
+    {
+      label: overlaySuppressed ? '顯示字幕視窗' : '隱藏字幕視窗',
+      click: () => {
+        overlaySuppressed = !overlaySuppressed;
+        if (overlaySuppressed) {
+          setOverlayMode('hidden');
+          overlayWindow?.hide();
+        } else if (overlayMode === 'subtitle') {
+          setOverlayVisible(true);
+        }
+        rebuildTrayMenu();
+      },
+    },
+    {
+      label: activeSessionMode === 'subtitle' ? '停止雙語字幕' : '開始雙語字幕',
+      click: async () => {
+        if (activeSessionMode === 'subtitle') {
+          await runSessionTransition(async () => {
+            await stopActiveSession();
+          });
+          return;
+        }
+        const settings = loadSettings();
+        const config = buildSessionConfig(settings, 'subtitle');
+        await runSessionTransition(async () => {
+          if (activeSessionMode) {
+            await stopActiveSession();
+          }
+          prepareSession(config);
+          bridge.startSession(config);
+        });
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '結束 BiCaption',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(contextMenu);
+}
+
+function createTray() {
+  if (tray) {
+    return;
+  }
+  const trayImage = nativeImage.createFromPath(getTrayIconPath()).resize({ width: 18, height: 18 });
+  tray = new Tray(trayImage);
+  tray.setToolTip('BiCaption');
+  tray.on('click', () => showSettingsWindow());
+  rebuildTrayMenu();
 }
 
 function createOverlayWindow() {
@@ -480,6 +563,7 @@ function bindBridge() {
     if (event.type === 'session_state' && event.state === 'error') {
       clearActiveSession(event.sessionId);
     }
+    rebuildTrayMenu();
     sendToWindows('sidecar:event', event);
   });
   bridge.on('dictation_state', (event: SidecarEvent) => {
@@ -496,6 +580,7 @@ function bindBridge() {
     if (event.type === 'session_stopped_ack') {
       clearActiveSession(event.sessionId);
     }
+    rebuildTrayMenu();
     forwardEvent(event);
   });
   bridge.on('error', (event: SidecarEvent) => {
@@ -505,6 +590,7 @@ function bindBridge() {
     if (event.type === 'error' && !event.recoverable) {
       clearActiveSession(event.sessionId);
     }
+    rebuildTrayMenu();
     sendToWindows('sidecar:event', event);
   });
   bridge.start();
@@ -624,6 +710,8 @@ async function openInputMonitoringSettings() {
 app.whenReady().then(() => {
   createSettingsWindow();
   createOverlayWindow();
+  createTray();
+  app.dock?.hide();
 
   ipcMain.handle('settings:load', () => loadSettings());
   ipcMain.handle('settings:save', (_event, partial) => {
@@ -632,6 +720,7 @@ app.whenReady().then(() => {
       restartDictationHotkeyListener();
     }
     sendToWindows('settings:changed', settings);
+    rebuildTrayMenu();
     return settings;
   });
   ipcMain.handle('permissions:check-accessibility', () => checkAccessibilityPermission());
@@ -656,12 +745,14 @@ app.whenReady().then(() => {
       prepareSession(config);
       bridge.startSession(config);
     });
+    rebuildTrayMenu();
     return { ok: true };
   });
   ipcMain.handle('session:stop', async () => {
     await runSessionTransition(async () => {
       await stopActiveSession();
     });
+    rebuildTrayMenu();
     return { ok: true };
   });
   ipcMain.handle('session:devices', async () => {
@@ -682,8 +773,7 @@ app.whenReady().then(() => {
     return devices;
   });
   ipcMain.handle('app:show-settings', () => {
-    settingsWindow?.show();
-    settingsWindow?.focus();
+    showSettingsWindow();
     return { ok: true };
   });
   ipcMain.handle('overlay:get-position', () => {
@@ -758,12 +848,14 @@ app.whenReady().then(() => {
       createOverlayWindow();
     }
     overlayWindow?.showInactive();
+    rebuildTrayMenu();
     return { ok: true };
   });
   ipcMain.handle('overlay:hide', () => {
     overlaySuppressed = true;
     setOverlayMode('hidden');
     overlayWindow?.hide();
+    rebuildTrayMenu();
     return { ok: true };
   });
 
@@ -776,15 +868,8 @@ app.whenReady().then(() => {
 });
 
 app.on('activate', () => {
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.show();
-    settingsWindow.focus();
-  } else {
-    createSettingsWindow();
-  }
+  showSettingsWindow();
 });
-
-app.dock?.show();
 
 app.on('before-quit', () => {
   isQuitting = true;
