@@ -4,6 +4,7 @@ type SubscribeMap = {
   'sidecar:event': SidecarEvent;
   'dictation:hotkey-event': DictationHotkeyEvent;
   'dictation:output-status': DictationOutputStatusEvent;
+  'overlay:mode': { mode: 'hidden' | 'subtitle' | 'dictation' };
   'settings:changed': AppSettings;
   'models:progress': ModelDownloadProgress;
   'models:done': ModelStatus;

@@ -32,6 +32,7 @@ let hotkeyListenerMode: 'dictation' | 'test' | 'idle' = 'idle';
 let pendingDictationStop = false;
 let pendingDictationPasteTarget: { appName: string; windowTitle: string | null } | null = null;
 let dictationOverlayHideTimeout: NodeJS.Timeout | null = null;
+let overlayMode: 'hidden' | 'subtitle' | 'dictation' = 'hidden';
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
@@ -85,6 +86,14 @@ function sendToWindows(channel: string, payload: unknown) {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.webContents.send(channel, payload);
   }
+}
+
+function setOverlayMode(mode: 'hidden' | 'subtitle' | 'dictation') {
+  if (overlayMode === mode) {
+    return;
+  }
+  overlayMode = mode;
+  sendToWindows('overlay:mode', { mode });
 }
 
 function handleDictationFinal(event: SidecarEvent) {
@@ -310,6 +319,7 @@ function restartDictationHotkeyListener() {
 
 function setOverlayVisible(visible: boolean) {
   if (visible) {
+    setOverlayMode('subtitle');
     if (overlaySuppressed) {
       return;
     }
@@ -318,6 +328,7 @@ function setOverlayVisible(visible: boolean) {
     }
     overlayWindow?.showInactive();
   } else {
+    setOverlayMode('hidden');
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.hide();
     }
@@ -333,6 +344,7 @@ function clearDictationOverlayHideTimeout() {
 
 function showDictationOverlay() {
   clearDictationOverlayHideTimeout();
+  setOverlayMode('dictation');
   if (!overlayWindow || overlayWindow.isDestroyed()) {
     createOverlayWindow();
   }
@@ -344,8 +356,10 @@ function hideDictationOverlaySoon(delayMs = 1800) {
   dictationOverlayHideTimeout = setTimeout(() => {
     dictationOverlayHideTimeout = null;
     if (activeSessionMode === 'subtitle') {
+      setOverlayMode('subtitle');
       return;
     }
+    setOverlayMode('hidden');
     overlayWindow?.hide();
   }, delayMs);
 }
@@ -719,6 +733,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('overlay:show', () => {
     overlaySuppressed = false;
+    setOverlayMode('subtitle');
     if (!overlayWindow || overlayWindow.isDestroyed()) {
       createOverlayWindow();
     }
@@ -727,6 +742,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('overlay:hide', () => {
     overlaySuppressed = true;
+    setOverlayMode('hidden');
     overlayWindow?.hide();
     return { ok: true };
   });

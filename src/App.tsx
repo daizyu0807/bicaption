@@ -22,10 +22,12 @@ function OverlayView({
   viewState,
   dictationState,
   settings,
+  overlayMode,
 }: {
   viewState: ReturnType<typeof useCaptionState>;
   dictationState: ReturnType<typeof useDictationState>;
   settings: AppSettings;
+  overlayMode: 'hidden' | 'subtitle' | 'dictation';
 }) {
   const overlayStyle = applySettingsOverlayStyle(settings);
   const hasVisibleCaptions = viewState.captions.length > 0 || Boolean(viewState.partial);
@@ -36,14 +38,22 @@ function OverlayView({
   const shouldShowShell = hasVisibleCaptions
     || viewState.sessionState === 'streaming'
     || viewState.sessionState === 'connecting'
-    || shouldShowDictationPrompt;
+    || shouldShowDictationPrompt
+    || overlayMode === 'dictation';
   const translationEnabled = isTranslationEnabled(settings);
   const stackRef = useRef<HTMLElement | null>(null);
   const userScrolledUp = useRef(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; winX: number; winY: number } | null>(null);
   const dictationPrompt = getDictationPrompt(dictationState, showDictationResult);
-  const isDictationOverlayMode = Boolean(dictationPrompt);
+  const effectiveDictationPrompt = overlayMode === 'dictation'
+    ? dictationPrompt ?? {
+      tone: 'live' as const,
+      title: '正在聽你說',
+      detail: '按住快捷鍵說話，放開後送出辨識。',
+    }
+    : dictationPrompt;
+  const isDictationOverlayMode = overlayMode === 'dictation';
 
   useEffect(() => {
     const el = stackRef.current;
@@ -102,13 +112,13 @@ function OverlayView({
     await window.app.showSettings();
   }
 
-  if (isDictationOverlayMode && dictationPrompt) {
+  if (isDictationOverlayMode && effectiveDictationPrompt) {
     return (
       <main className="overlay-window overlay-window-dictation" style={overlayStyle}>
         <section className="dictation-overlay-shell">
-          <div className={`dictation-prompt dictation-prompt-${dictationPrompt.tone} no-drag`}>
+          <div className={`dictation-prompt dictation-prompt-${effectiveDictationPrompt.tone} no-drag`}>
             <span className="dictation-prompt-dot" aria-hidden="true">
-              {dictationPrompt.tone === 'live' && (
+              {effectiveDictationPrompt.tone === 'live' && (
                 <>
                   <span className="dictation-prompt-ring dictation-prompt-ring-a" />
                   <span className="dictation-prompt-ring dictation-prompt-ring-b" />
@@ -116,9 +126,9 @@ function OverlayView({
               )}
             </span>
             <div className="dictation-prompt-copy">
-              <p className="dictation-prompt-title">{dictationPrompt.title}</p>
-              <p className="dictation-prompt-text">{dictationPrompt.detail}</p>
-              {dictationPrompt.tone === 'processing' && (
+              <p className="dictation-prompt-title">{effectiveDictationPrompt.title}</p>
+              <p className="dictation-prompt-text">{effectiveDictationPrompt.detail}</p>
+              {effectiveDictationPrompt.tone === 'processing' && (
                 <span className="dictation-prompt-progress" aria-hidden="true">
                   <span className="dictation-prompt-progress-bar" />
                 </span>
@@ -244,6 +254,22 @@ function useDictationState() {
   }, []);
 
   return viewState;
+}
+
+function useOverlayMode() {
+  const [mode, setMode] = useState<'hidden' | 'subtitle' | 'dictation'>('hidden');
+
+  useEffect(() => {
+    if (!window.app) {
+      return;
+    }
+
+    return window.app.subscribe('overlay:mode', (payload) => {
+      setMode(payload.mode);
+    });
+  }, []);
+
+  return mode;
 }
 
 function getDictationPrompt(
@@ -894,6 +920,7 @@ export function App() {
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const captionState = useCaptionState();
   const dictationState = useDictationState();
+  const overlayMode = useOverlayMode();
   const overlayRoute = isOverlayRoute();
 
   useEffect(() => {
@@ -952,7 +979,7 @@ export function App() {
   }
 
   if (overlayRoute) {
-    return <OverlayView viewState={captionState} dictationState={dictationState} settings={settings} />;
+    return <OverlayView viewState={captionState} dictationState={dictationState} settings={settings} overlayMode={overlayMode} />;
   }
 
   return <SettingsView settings={settings} devices={devices} viewState={captionState} modelStatus={modelStatus} onSave={onSave} />;
