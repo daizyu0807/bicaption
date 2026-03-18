@@ -99,6 +99,27 @@ select {
   overflow-y: auto;
 }
 
+.settings-tabbar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.settings-tab {
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(246, 239, 227, 0.72);
+  box-shadow: none;
+}
+
+.settings-tab.active {
+  background: linear-gradient(135deg, #ff9b53, #ffd36e);
+  color: #101418;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
 .bottom-bar {
   display: flex;
   gap: 8px;

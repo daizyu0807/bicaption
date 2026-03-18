@@ -322,6 +322,7 @@ function SettingsView({
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation'>('subtitle');
   const [draft, setDraft] = useState(settings);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
@@ -476,6 +477,20 @@ function SettingsView({
       </header>
 
       <section className="settings-grid">
+        <div className="settings-tabbar">
+          <button
+            className={activeSettingsTab === 'subtitle' ? 'settings-tab active' : 'settings-tab'}
+            onClick={() => setActiveSettingsTab('subtitle')}
+          >
+            雙語辨識
+          </button>
+          <button
+            className={activeSettingsTab === 'dictation' ? 'settings-tab active' : 'settings-tab'}
+            onClick={() => setActiveSettingsTab('dictation')}
+          >
+            語音輸入
+          </button>
+        </div>
         <article className="panel model-panel">
           <h2>Models</h2>
           <div className="model-status-row">
@@ -511,8 +526,9 @@ function SettingsView({
           {downloadError && <p className="error-text">{downloadError}</p>}
         </article>
 
+        {activeSettingsTab === 'dictation' && (
         <article className="panel">
-          <h2>Dictation Hotkey Test</h2>
+          <h2>Dictation Hotkey</h2>
           <p className="model-hint">Binding: {getDictationHotkeyLabel(hotkeyBinding)}</p>
           {hotkeyValidation.error && <p className="error-text">{hotkeyValidation.error}</p>}
           {!hotkeyValidation.error && hotkeyValidation.warning && <p className="model-hint">{hotkeyValidation.warning}</p>}
@@ -622,7 +638,9 @@ function SettingsView({
           </div>
           {hotkeyTestError && <p className="error-text">{hotkeyTestError}</p>}
         </article>
+        )}
 
+        {activeSettingsTab === 'dictation' && (
         <article className="panel">
           <h2>Dictation Session</h2>
           <p className="model-hint">Session: {dictationState.sessionState}</p>
@@ -661,9 +679,11 @@ function SettingsView({
           </div>
           {dictationState.lastError && <p className="error-text">{dictationState.lastError}</p>}
         </article>
+        )}
 
+        {activeSettingsTab === 'subtitle' && (
         <article className="panel">
-          <h2>Session</h2>
+          <h2>Bilingual Capture</h2>
           <label>
             輸入裝置（麥克風）
             <select value={draft.deviceId} onChange={(event) => setDraft({ ...draft, deviceId: event.target.value })}>
@@ -747,9 +767,11 @@ function SettingsView({
             {overlaySuppressedLocal ? '顯示字幕' : '隱藏字幕'}
           </button>
         </article>
+        )}
 
+        {activeSettingsTab === 'dictation' && (
         <article className="panel">
-          <h2>Output</h2>
+          <h2>Dictation Output</h2>
           <label>
             Dictation output
             <select
@@ -766,6 +788,12 @@ function SettingsView({
               Paste currently requires Accessibility permission. If paste fails, the transcript stays in clipboard.
             </p>
           )}
+        </article>
+        )}
+
+        {activeSettingsTab === 'subtitle' && (
+        <article className="panel">
+          <h2>Subtitle Output</h2>
           <div className="form-row-2">
             <label>
               Opacity
@@ -795,28 +823,51 @@ function SettingsView({
             </div>
           )}
         </article>
+        )}
       </section>
 
       <footer className="bottom-bar">
-        <button
-          disabled={!modelsReady || !hotkeyValidation.isValid}
-          onClick={async () => {
-            if (isStreaming) {
-              await window.app.stopSession();
-            }
-            const nextSettings = {
-              ...draft,
-              translateModel: isTranslationEnabled(draft) ? 'google' : 'disabled',
-            };
-            await onSave(nextSettings);
-            await window.app.startSession(buildSessionConfig(nextSettings));
-          }}
-        >
-          {!modelsReady ? '需要下載模型' : isStreaming ? '套用' : '開始'}
-        </button>
-        <button className="secondary" disabled={!isStreaming} onClick={() => window.app.stopSession()}>
-          停止
-        </button>
+        {activeSettingsTab === 'subtitle' ? (
+          <>
+            <button
+              disabled={!modelsReady || !hotkeyValidation.isValid}
+              onClick={async () => {
+                if (isStreaming) {
+                  await window.app.stopSession();
+                }
+                const nextSettings = {
+                  ...draft,
+                  translateModel: isTranslationEnabled(draft) ? 'google' : 'disabled',
+                };
+                await onSave(nextSettings);
+                await window.app.startSession(buildSessionConfig(nextSettings));
+              }}
+            >
+              {!modelsReady ? '需要下載模型' : isStreaming ? '套用' : '開始'}
+            </button>
+            <button className="secondary" disabled={!isStreaming} onClick={() => window.app.stopSession()}>
+              停止
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              disabled={!hotkeyValidation.isValid}
+              onClick={async () => {
+                const nextSettings = {
+                  ...draft,
+                  translateModel: isTranslationEnabled(draft) ? 'google' : 'disabled',
+                };
+                await onSave(nextSettings);
+              }}
+            >
+              儲存語音輸入設定
+            </button>
+            <button className="secondary" disabled={!isDictating} onClick={() => window.app.stopSession()}>
+              停止 Dictation
+            </button>
+          </>
+        )}
       </footer>
     </main>
   );
