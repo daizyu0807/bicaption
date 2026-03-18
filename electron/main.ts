@@ -210,7 +210,7 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionCo
   return {
     mode,
     sessionId: randomUUID(),
-    deviceId: settings.deviceId,
+    deviceId: mode === 'dictation' ? settings.dictationDeviceId : settings.subtitleDeviceId,
     outputDeviceId: settings.outputDeviceId,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,

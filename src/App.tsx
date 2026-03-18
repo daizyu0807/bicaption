@@ -185,7 +185,7 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
   return {
     mode,
     sessionId: crypto.randomUUID(),
-    deviceId: settings.deviceId,
+    deviceId: mode === 'dictation' ? settings.dictationDeviceId : settings.subtitleDeviceId,
     outputDeviceId: settings.outputDeviceId,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
@@ -568,6 +568,19 @@ function SettingsView({
         {activeSettingsTab === 'dictation' && (
         <article className="panel">
           <h2>Dictation Hotkey</h2>
+          <label>
+            輸入裝置（麥克風）
+            <select
+              value={draft.dictationDeviceId}
+              onChange={(event) => setDraft({ ...draft, dictationDeviceId: event.target.value })}
+            >
+              {inputDevices.map((device) => (
+                <option key={device.id} value={device.id}>
+                  {device.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <p className="model-hint">Binding: {getDictationHotkeyLabel(hotkeyBinding)}</p>
           {hotkeyValidation.error && <p className="error-text">{hotkeyValidation.error}</p>}
           {!hotkeyValidation.error && hotkeyValidation.warning && <p className="model-hint">{hotkeyValidation.warning}</p>}
@@ -763,7 +776,10 @@ function SettingsView({
           <h2>Bilingual Capture</h2>
           <label>
             輸入裝置（麥克風）
-            <select value={draft.deviceId} onChange={(event) => setDraft({ ...draft, deviceId: event.target.value })}>
+            <select
+              value={draft.subtitleDeviceId}
+              onChange={(event) => setDraft({ ...draft, subtitleDeviceId: event.target.value })}
+            >
               {inputDevices.map((device) => (
                 <option key={device.id} value={device.id}>
                   {device.label}
@@ -980,11 +996,12 @@ export function App() {
       const inputDeviceIds = new Set(
         loadedDevices.filter((d) => d.kind === 'input' || d.kind === 'duplex').map((d) => d.id),
       );
-      if (!loadedSettings.deviceId || !inputDeviceIds.has(loadedSettings.deviceId)) {
-        const preferred = pickPreferredInputDevice(loadedDevices);
-        if (preferred) {
-          loadedSettings = { ...loadedSettings, deviceId: preferred.id };
-        }
+      const preferred = pickPreferredInputDevice(loadedDevices);
+      if (!loadedSettings.subtitleDeviceId || !inputDeviceIds.has(loadedSettings.subtitleDeviceId)) {
+        loadedSettings = { ...loadedSettings, subtitleDeviceId: preferred?.id ?? '' };
+      }
+      if (!loadedSettings.dictationDeviceId || !inputDeviceIds.has(loadedSettings.dictationDeviceId)) {
+        loadedSettings = { ...loadedSettings, dictationDeviceId: preferred?.id ?? '' };
       }
       setSettings(loadedSettings);
     }).catch((error: unknown) => {

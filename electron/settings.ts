@@ -3,6 +3,8 @@ import type { AppSettings } from './types.js';
 
 export const defaultSettings: AppSettings = {
   deviceId: '',
+  subtitleDeviceId: '',
+  dictationDeviceId: '',
   outputDeviceId: '',
   dictationHotkey: {
     keyCode: 59,
@@ -36,9 +38,13 @@ const store = new Store<AppSettings>({
 });
 
 export function loadSettings(): AppSettings {
+  const stored = store.store as Partial<AppSettings> & { deviceId?: string };
+  const legacyDeviceId = stored.deviceId ?? '';
   const current = {
     ...defaultSettings,
-    ...store.store,
+    ...stored,
+    subtitleDeviceId: stored.subtitleDeviceId ?? legacyDeviceId ?? '',
+    dictationDeviceId: stored.dictationDeviceId ?? legacyDeviceId ?? '',
   };
   return current;
 }

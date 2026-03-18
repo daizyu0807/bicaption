@@ -123,7 +123,9 @@ export interface CaptionRecord {
 }
 
 export interface AppSettings {
-  deviceId: string;
+  deviceId?: string;
+  subtitleDeviceId: string;
+  dictationDeviceId: string;
   outputDeviceId: string;
   dictationHotkey: DictationHotkeyBinding;
   sourceLang: string;
