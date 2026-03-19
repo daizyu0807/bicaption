@@ -71,7 +71,7 @@ export class SidecarBridge extends EventEmitter {
       }
       try {
         const event = JSON.parse(trimmed) as SidecarEvent;
-        if (event.type === 'session_stopped_ack' || (event.type === 'session_state' && event.state === 'stopped')) {
+        if (event.type === 'session_stopped_ack') {
           this.finishPendingStop();
         }
         this.emit(event.type, event);
