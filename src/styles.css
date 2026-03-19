@@ -309,6 +309,7 @@ button:disabled {
 
 .dictation-section {
   display: grid;
+  align-content: start;
   gap: 12px;
   padding: 12px 0 0;
   border-radius: 0;
@@ -327,8 +328,13 @@ button:disabled {
 }
 
 .dictation-flow-grid > .dictation-section {
+  align-self: start;
   padding-top: 0;
   border-top-color: transparent;
+}
+
+.dictation-detail-stack > .dictation-section {
+  align-self: start;
 }
 
 .dictation-section-header {
