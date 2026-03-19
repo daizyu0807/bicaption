@@ -279,10 +279,11 @@ button:disabled {
 
 .dictation-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 16px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
   background:
     radial-gradient(circle at top left, rgba(255, 180, 108, 0.24), transparent 38%),
     linear-gradient(150deg, rgba(17, 23, 30, 0.96), rgba(9, 13, 18, 0.92));
@@ -297,52 +298,41 @@ button:disabled {
     linear-gradient(150deg, rgba(17, 23, 30, 0.96), rgba(9, 13, 18, 0.92));
 }
 
-.dictation-hero-copy {
-  display: grid;
-  gap: 6px;
-  align-content: start;
-}
-
 .dictation-kicker,
 .dictation-section-kicker {
   font-size: 0.69rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgba(255, 194, 133, 0.72);
-}
-
-.dictation-hero-title {
-  font-size: clamp(1.04rem, 0.95rem + 0.32vw, 1.26rem);
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: #fff4e7;
-  text-transform: none;
+  white-space: nowrap;
 }
 
 .dictation-hero-text,
 .dictation-section-copy {
   max-width: 58ch;
-  line-height: 1.6;
+  line-height: 1.5;
   color: rgba(246, 239, 227, 0.72);
-  font-size: 0.8rem;
+  font-size: 0.77rem;
 }
 
 .dictation-hero-notes {
-  display: grid;
-  align-content: center;
-  gap: 8px;
-  padding-left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 8px;
 }
 
 .dictation-hero-notes p {
-  display: grid;
-  gap: 2px;
-  padding-left: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-left: 10px;
   margin: 0;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 0.8rem;
-  line-height: 1.45;
+  font-size: 0.75rem;
+  line-height: 1.35;
   color: rgba(246, 239, 227, 0.72);
+  white-space: nowrap;
 }
 
 .dictation-hero-notes strong {
@@ -355,6 +345,11 @@ button:disabled {
 
 .subtitle-hero .dictation-hero-notes strong {
   color: rgba(157, 210, 255, 0.7);
+}
+
+.subtitle-workspace .dictation-feature-toggle {
+  background: rgba(132, 193, 255, 0.08);
+  border-color: rgba(132, 193, 255, 0.14);
 }
 
 .dictation-section {
@@ -1104,6 +1099,7 @@ button:disabled {
 
   .dictation-hero-notes {
     padding-left: 0;
+    flex-wrap: wrap;
   }
 }
 
@@ -1164,6 +1160,10 @@ button:disabled {
   }
 
   .dictation-workspace {
+    gap: 8px;
+  }
+
+  .subtitle-workspace {
     gap: 8px;
   }
 

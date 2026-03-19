@@ -654,11 +654,8 @@ function SettingsView({
         {activeSettingsTab === 'dictation' && (
         <div className="dictation-workspace settings-content-grid">
           <article className="dictation-hero">
-            <div className="dictation-hero-copy">
-              <p className="dictation-kicker">Voice Dictation</p>
-              <h2 className="dictation-hero-title">把語音輸入縮成幾個必要選擇。</h2>
-              <p className="dictation-hero-text">按住快捷鍵說話，放開後直接輸出文字。規則整理固定啟用，本地 LLM 只在你需要更自然的文字時介入。</p>
-            </div>
+            <p className="dictation-kicker">Voice Dictation</p>
+            <p className="dictation-hero-text">按住快捷鍵說話，放開後直接輸出文字。規則整理固定啟用，本地 LLM 只在需要時介入。</p>
             <div className="dictation-hero-notes">
               <p><strong>快捷鍵</strong>{getDictationHotkeyLabel(hotkeyBinding)}</p>
               <p><strong>輸出</strong>{draft.dictationOutputStyle === 'polished' ? '潤飾後文字' : '原文逐字稿'}</p>
@@ -873,7 +870,6 @@ function SettingsView({
                   placeholder={'spoken => canonical\nchat g p t => ChatGPT\nbicaption => BiCaption'}
                 />
               </label>
-              <p className="model-hint">每行一條，格式為 <code>{'spoken => canonical'}</code>。如果你常說產品名、人名或術語，優先在這裡修正。</p>
               {draft.dictationOutputAction !== 'copy' && (
                 <p className="model-hint">自動貼上需要 Accessibility 權限。若貼上失敗，文字仍會保留在剪貼簿。</p>
               )}
@@ -923,6 +919,7 @@ function SettingsView({
                   )}
                   {localLlmEnabled && (
                     <>
+                      <p className="model-hint">本地 LLM 與語音辨識細節屬於低頻設定，通常只在首次調整效果或除錯時才需要更動。</p>
                       <label>
                         本地模型 ID / 路徑
                         <input
@@ -1011,11 +1008,8 @@ function SettingsView({
         {activeSettingsTab === 'subtitle' && (
         <div className="subtitle-workspace settings-content-grid">
           <article className="dictation-hero subtitle-hero">
-            <div className="dictation-hero-copy">
-              <p className="dictation-kicker">Live Subtitles</p>
-              <h2 className="dictation-hero-title">把字幕顯示和輸入來源分清楚。</h2>
-              <p className="dictation-hero-text">字幕模式重點是穩定和低延遲。主畫面只放來源、翻譯與顯示方式，辨識細節收進進階。</p>
-            </div>
+            <p className="dictation-kicker">Live Subtitles</p>
+            <p className="dictation-hero-text">字幕模式重點是穩定和低延遲。主畫面只放來源、翻譯與顯示方式，辨識細節收進進階。</p>
             <div className="dictation-hero-notes">
               <p><strong>來源語言</strong>{draft.sourceLang === 'auto' ? '自動偵測' : draft.sourceLang}</p>
               <p><strong>雙語字幕</strong>{translationOn ? '已開啟' : '未開啟'}</p>
@@ -1103,18 +1097,8 @@ function SettingsView({
                 <div>
                   <p className="dictation-section-kicker">顯示</p>
                   <h3 className="dictation-section-title">決定字幕看起來怎麼樣</h3>
-                  <p className="dictation-section-copy">把字幕本身當成視覺輸出來看，常用的只剩顯示、大小、透明度和是否保存。</p>
+                  <p className="dictation-section-copy">先處理顯示與雙語開關，保存與進階調校放到次層。</p>
                 </div>
-              </div>
-              <div className="dictation-inline-grid">
-                <label>
-                  透明度
-                  <input type="range" min="0.3" max="1" step="0.05" value={draft.overlayOpacity} onChange={(event) => setDraft({ ...draft, overlayOpacity: Number(event.target.value) })} />
-                </label>
-                <label>
-                  字體大小
-                  <input type="range" min="0.8" max="1.8" step="0.1" value={draft.overlayFontScale} onChange={(event) => setDraft({ ...draft, overlayFontScale: Number(event.target.value) })} />
-                </label>
               </div>
               <button className={overlaySuppressedLocal ? 'secondary' : ''} onClick={() => {
                 if (overlaySuppressedLocal) {
@@ -1127,24 +1111,16 @@ function SettingsView({
               }}>
                 {overlaySuppressedLocal ? '顯示字幕' : '隱藏字幕'}
               </button>
-              <label className="toggle-row">
-                <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
-                保存字幕記錄
-              </label>
-              {draft.saveEnabled && (
-                <div className="save-path-row">
-                  <span className="save-path-text">{draft.saveDirectory || '未設定'}</span>
-                  <button className="secondary" onClick={async () => {
-                    const dir = await window.app.chooseSaveDirectory();
-                    if (dir) {
-                      setDraft({ ...draft, saveDirectory: dir });
-                    }
-                  }}>選擇</button>
-                  {draft.saveDirectory && (
-                    <button className="secondary" onClick={() => window.app.openSaveDirectory()}>查看</button>
-                  )}
-                </div>
-              )}
+              <div className="dictation-inline-grid">
+                <label>
+                  透明度
+                  <input type="range" min="0.3" max="1" step="0.05" value={draft.overlayOpacity} onChange={(event) => setDraft({ ...draft, overlayOpacity: Number(event.target.value) })} />
+                </label>
+                <label>
+                  字體大小
+                  <input type="range" min="0.8" max="1.8" step="0.1" value={draft.overlayFontScale} onChange={(event) => setDraft({ ...draft, overlayFontScale: Number(event.target.value) })} />
+                </label>
+              </div>
             </article>
           </div>
 
@@ -1178,6 +1154,24 @@ function SettingsView({
                       </label>
                       <p className="model-hint">SFSpeechRecognizer 會依照目前的來源語言辨識，不會做多語自動判斷。若你常中英混講，改用 SenseVoice。</p>
                     </>
+                  )}
+                  <label className="toggle-row">
+                    <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
+                    保存字幕記錄
+                  </label>
+                  {draft.saveEnabled && (
+                    <div className="save-path-row">
+                      <span className="save-path-text">{draft.saveDirectory || '未設定'}</span>
+                      <button className="secondary" onClick={async () => {
+                        const dir = await window.app.chooseSaveDirectory();
+                        if (dir) {
+                          setDraft({ ...draft, saveDirectory: dir });
+                        }
+                      }}>選擇</button>
+                      {draft.saveDirectory && (
+                        <button className="secondary" onClick={() => window.app.openSaveDirectory()}>查看</button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
