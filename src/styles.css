@@ -201,11 +201,16 @@ select,
 textarea {
   width: 100%;
   padding: 9px 12px;
+  min-height: 42px;
   border-radius: 12px;
   border: 1px solid rgba(31, 35, 40, 0.12);
   background: #ffffff;
   color: #1f2328;
   font-size: 0.86rem;
+}
+
+select {
+  line-height: 1.2;
 }
 
 textarea {
@@ -321,6 +326,11 @@ button:disabled {
   border-color: transparent;
 }
 
+.dictation-flow-grid > .dictation-section {
+  padding-top: 0;
+  border-top-color: transparent;
+}
+
 .dictation-section-header {
   display: flex;
   align-items: start;
@@ -345,6 +355,11 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  align-items: start;
+}
+
+.dictation-inline-grid > label {
+  align-content: start;
 }
 
 .settings-toggle-block {
