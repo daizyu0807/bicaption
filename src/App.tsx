@@ -440,6 +440,18 @@ function getRewriteFallbackLabel(reason: string | null) {
       return '雲端 rewrite provider 尚未接入，已回退。';
     case 'local_llm_rewrite_unavailable':
       return '本地 LLM rewrite provider 尚未接入，已回退。';
+    case 'local_llm_provider_missing':
+      return '找不到本地 LLM rewrite script，已回退到規則整理。';
+    case 'local_llm_dependency_missing':
+      return '本地 LLM 依賴未安裝，已回退到規則整理。';
+    case 'local_llm_model_missing':
+      return '尚未設定本地 LLM 模型，已回退到規則整理。';
+    case 'local_llm_timeout':
+      return '本地 LLM 回應逾時，已回退到規則整理。';
+    case 'local_llm_provider_error':
+      return '本地 LLM 執行失敗，已回退到規則整理。';
+    case 'local_llm_invalid_response':
+      return '本地 LLM 回傳格式無法解析，已回退到規則整理。';
     case 'rewrite_empty':
       return '整理結果為空，已回退到前一階段文字。';
     case 'rewrite_expanded_too_much':
@@ -874,7 +886,7 @@ function SettingsView({
             </p>
           )}
           {draft.dictationRewriteMode === 'rules-and-local-llm' && (
-            <p className="model-hint">本地 LLM 會先吃 dictionary 校正結果，再依保守 prompt 做書面化；prompt contract 已對齊 SayIt 的「口語轉可直接貼上文字」方向。</p>
+            <p className="model-hint">本地 LLM 會先吃 dictionary 校正結果，再依保守 prompt 做書面化；prompt contract 已對齊 SayIt 的「口語轉可直接貼上文字」方向。要啟用 MLX，先設定 `BICAPTION_LOCAL_LLM_MODEL`；若你有自訂 runner，也可設定 `BICAPTION_LOCAL_LLM_RUNNER`。</p>
           )}
           <p className="model-hint">按住快捷鍵開始語音輸入，放開後結束並輸出文字。</p>
         </article>

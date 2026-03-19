@@ -1,7 +1,9 @@
 from pathlib import Path
+import subprocess
 import sys
 import unittest
 import types
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -40,6 +42,7 @@ from sidecar import (
     apply_dictation_dictionary,
     apply_dictation_rules_rewrite,
     build_local_llm_rewrite_prompt,
+    LocalLlmRewriteProvider,
     FallbackTranslator,
     build_dictation_final_event,
     build_dictation_state_event,
@@ -160,7 +163,7 @@ class TranslationProviderTest(unittest.TestCase):
         )
         self.assertEqual(event["finalText"], "hello world")
         self.assertEqual(event["rewriteBackend"], "local-llm")
-        self.assertEqual(event["fallbackReason"], "local_llm_rewrite_unavailable")
+        self.assertEqual(event["fallbackReason"], "local_llm_model_missing")
 
     def test_local_llm_prompt_preserves_sayit_style_constraints(self) -> None:
         prompt = build_local_llm_rewrite_prompt(
@@ -176,6 +179,34 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertIn("Preserve protected terms exactly", prompt)
         self.assertIn("ChatGPT", prompt)
         self.assertIn("BiCaption", prompt)
+
+    def test_local_llm_provider_reports_missing_script(self) -> None:
+        provider = LocalLlmRewriteProvider("/tmp/non-existent-rewriter.py")
+        result = provider.rewrite("hello", "hello", "zh", "polished", 1.3, [])
+        self.assertFalse(result.applied)
+        self.assertEqual(result.backend, "local-llm")
+        self.assertEqual(result.fallback_reason, "local_llm_provider_missing")
+
+    @patch("sidecar.os.path.exists", return_value=True)
+    @patch("sidecar.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="rewriter", timeout=2.5))
+    def test_local_llm_provider_reports_timeout(self, _run, _exists) -> None:
+        provider = LocalLlmRewriteProvider("/tmp/rewriter.py")
+        result = provider.rewrite("hello", "hello", "zh", "polished", 1.3, [])
+        self.assertFalse(result.applied)
+        self.assertEqual(result.fallback_reason, "local_llm_timeout")
+
+    @patch("sidecar.os.path.exists", return_value=True)
+    @patch("sidecar.subprocess.run")
+    def test_local_llm_provider_accepts_valid_response(self, run_mock, _exists) -> None:
+        run_mock.return_value = types.SimpleNamespace(
+            returncode=0,
+            stdout='{"text":"ChatGPT works"}',
+            stderr="",
+        )
+        provider = LocalLlmRewriteProvider("/tmp/rewriter.py")
+        result = provider.rewrite("um chat g p t works", "ChatGPT works", "zh", "polished", 1.3, ["ChatGPT"])
+        self.assertEqual(result.text, "ChatGPT works")
+        self.assertEqual(result.backend, "local-llm")
 
 
 if __name__ == "__main__":

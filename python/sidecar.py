@@ -32,6 +32,7 @@ WHISPER_SMALL_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-whisper-smal
 ZIPFORMER_KOREAN_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-zipformer-korean-2024-06-24")
 SILERO_VAD_MODEL = os.path.join(MODEL_BASE_DIR, "silero_vad.onnx")
 APPLE_STT_BIN = os.path.join(SCRIPT_DIR, "apple-stt")
+LOCAL_LLM_REWRITE_BIN = os.path.join(SCRIPT_DIR, "local-llm-rewrite.py")
 DEFAULT_EMIT_CONTEXT = {
     "mode": "subtitle",
     "sessionId": "bootstrap",
@@ -529,13 +530,121 @@ class UnavailableRewriteProvider(DictationRewriteProvider):
         )
 
 
+class LocalLlmRewriteProvider(DictationRewriteProvider):
+    backend = "local-llm"
+
+    def __init__(self, script_path: str, timeout_seconds: float = 2.5) -> None:
+        self.script_path = script_path
+        self.timeout_seconds = timeout_seconds
+
+    def rewrite(
+        self,
+        literal_transcript: str,
+        text: str,
+        source_lang: str,
+        output_style: str,
+        max_expansion_ratio: float,
+        protected_terms: list[str],
+    ) -> DictationRewriteResult:
+        if not os.path.exists(self.script_path):
+            return DictationRewriteResult(
+                text=text,
+                backend=self.backend,
+                applied=False,
+                fallback_reason="local_llm_provider_missing",
+            )
+        prompt = build_local_llm_rewrite_prompt(
+            literal_transcript=literal_transcript,
+            dictionary_text=text,
+            source_lang=source_lang,
+            output_style=output_style,
+            protected_terms=protected_terms,
+        )
+        payload = {
+            "prompt": prompt,
+            "literalTranscript": literal_transcript,
+            "dictionaryText": text,
+            "sourceLang": source_lang,
+            "outputStyle": output_style,
+            "protectedTerms": protected_terms,
+        }
+        try:
+            result = subprocess.run(
+                [sys.executable, self.script_path],
+                input=json.dumps(payload, ensure_ascii=False),
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return DictationRewriteResult(
+                text=text,
+                backend=self.backend,
+                applied=False,
+                fallback_reason="local_llm_timeout",
+            )
+        except Exception:
+            return DictationRewriteResult(
+                text=text,
+                backend=self.backend,
+                applied=False,
+                fallback_reason="local_llm_provider_error",
+            )
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip().lower()
+            if "dependency" in stderr:
+                reason = "local_llm_dependency_missing"
+            elif "model" in stderr:
+                reason = "local_llm_model_missing"
+            else:
+                reason = "local_llm_provider_error"
+            return DictationRewriteResult(
+                text=text,
+                backend=self.backend,
+                applied=False,
+                fallback_reason=reason,
+            )
+
+        try:
+            response = json.loads(result.stdout.strip() or "{}")
+        except json.JSONDecodeError:
+            return DictationRewriteResult(
+                text=text,
+                backend=self.backend,
+                applied=False,
+                fallback_reason="local_llm_invalid_response",
+            )
+
+        candidate = normalize_text(str(response.get("text", "")))
+        accepted, fallback_reason = should_accept_rewrite(
+            text,
+            candidate,
+            max_expansion_ratio,
+            protected_terms,
+        )
+        if not accepted:
+            return DictationRewriteResult(
+                text=text,
+                backend=self.backend,
+                applied=False,
+                fallback_reason=fallback_reason,
+            )
+        return DictationRewriteResult(
+            text=candidate,
+            backend=self.backend,
+            applied=candidate != text,
+        )
+
+
 def get_dictation_rewrite_provider(rewrite_mode: str) -> DictationRewriteProvider | None:
     if rewrite_mode == "rules":
         return RulesRewriteProvider()
     if rewrite_mode == "rules-and-cloud":
         return UnavailableRewriteProvider("cloud-llm", "cloud_rewrite_unavailable")
     if rewrite_mode == "rules-and-local-llm":
-        return UnavailableRewriteProvider("local-llm", "local_llm_rewrite_unavailable")
+        return LocalLlmRewriteProvider(LOCAL_LLM_REWRITE_BIN)
     return None
 
 
