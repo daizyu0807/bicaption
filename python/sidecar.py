@@ -100,20 +100,58 @@ def build_dictation_final_event(
     ended_at_ms: int,
     convert_s2t: bool = False,
     opencc_s2t: OpenCC | None = None,
+    rewrite_mode: str = "disabled",
+    dictionary_enabled: bool = False,
+    dictionary_text: str = "",
+    max_rewrite_expansion_ratio: float = 1.3,
 ) -> dict[str, Any]:
     transcript = normalize_text(" ".join(transcript_parts))
     if convert_s2t and opencc_s2t is not None and transcript:
         transcript = opencc_s2t.convert(transcript)
-    dictionary_text = transcript
-    final_text = dictionary_text
+    dictionary_entries = parse_dictation_dictionary(dictionary_text) if dictionary_enabled else []
+    dictionary_result = apply_dictation_dictionary(transcript, dictionary_entries) if dictionary_entries else transcript
+    final_text = dictionary_result
+    rewrite_backend = "disabled"
+    rewrite_applied = False
+    fallback_reason: str | None = None
+    protected_terms = [canonical for _, canonical in dictionary_entries]
+
+    if rewrite_mode == "rules":
+        candidate = apply_dictation_rules_rewrite(dictionary_result)
+        accepted, fallback_reason = should_accept_rewrite(
+            dictionary_result,
+            candidate,
+            max_rewrite_expansion_ratio,
+            protected_terms,
+        )
+        if accepted:
+            final_text = candidate
+            rewrite_backend = "rules"
+            rewrite_applied = candidate != dictionary_result
+    elif rewrite_mode in {"rules-and-cloud", "rules-and-local-llm"}:
+        candidate = apply_dictation_rules_rewrite(dictionary_result)
+        accepted, guardrail_reason = should_accept_rewrite(
+            dictionary_result,
+            candidate,
+            max_rewrite_expansion_ratio,
+            protected_terms,
+        )
+        if accepted:
+            final_text = candidate
+            rewrite_backend = "rules"
+            rewrite_applied = candidate != dictionary_result
+        provider_reason = "cloud_rewrite_unavailable" if rewrite_mode == "rules-and-cloud" else "local_llm_rewrite_unavailable"
+        fallback_reason = guardrail_reason or provider_reason
+
     return {
         "type": "dictation_final",
         "sessionId": session_id,
         "literalTranscript": transcript,
-        "dictionaryText": dictionary_text,
+        "dictionaryText": dictionary_result,
         "finalText": final_text,
-        "rewriteBackend": "disabled",
-        "rewriteApplied": False,
+        "rewriteBackend": rewrite_backend,
+        "rewriteApplied": rewrite_applied,
+        **({"fallbackReason": fallback_reason} if fallback_reason else {}),
         "chunkCount": len(transcript_parts),
         "startedAtMs": started_at_ms,
         "endedAtMs": ended_at_ms,
@@ -295,6 +333,76 @@ class SessionConfig:
     translate_model: str
     chunk_ms: int
     partial_stable_ms: int
+    dictation_rewrite_mode: str = "disabled"
+    dictation_dictionary_enabled: bool = False
+    dictation_cloud_enhancement_enabled: bool = False
+    dictation_output_style: str = "literal"
+    dictation_dictionary_text: str = ""
+    dictation_max_rewrite_expansion_ratio: float = 1.3
+
+
+def parse_dictation_dictionary(dictionary_text: str) -> list[tuple[str, str]]:
+    entries: list[tuple[str, str]] = []
+    for raw_line in dictionary_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=>" not in line:
+            continue
+        spoken, canonical = (part.strip() for part in line.split("=>", 1))
+        spoken_normalized = normalize_text(spoken)
+        canonical_normalized = normalize_text(canonical)
+        if not spoken_normalized or not canonical_normalized:
+            continue
+        entries.append((spoken_normalized, canonical_normalized))
+    entries.sort(key=lambda item: len(item[0]), reverse=True)
+    return entries
+
+
+def apply_dictation_dictionary(text: str, dictionary_entries: list[tuple[str, str]]) -> str:
+    result = normalize_text(text)
+    if not result:
+        return ""
+    for spoken, canonical in dictionary_entries:
+        pattern = re.compile(rf"(?<!\w){re.escape(spoken)}(?!\w)", re.IGNORECASE)
+        result = pattern.sub(canonical, result)
+    return normalize_text(result)
+
+
+def apply_dictation_rules_rewrite(text: str) -> str:
+    rewritten = normalize_text(text)
+    if not rewritten:
+        return ""
+    filler_patterns = [
+        r"\b(?:um|uh|erm|hmm|mm)\b",
+        r"\b(?:那個|就是|嗯|呃|啊)\b",
+    ]
+    for pattern in filler_patterns:
+        rewritten = re.sub(pattern, " ", rewritten, flags=re.IGNORECASE)
+    rewritten = re.sub(r"\b(\w+)(?:\s+\1\b)+", r"\1", rewritten, flags=re.IGNORECASE)
+    rewritten = re.sub(r"\s+([,.;:!?，。！？；：])", r"\1", rewritten)
+    rewritten = re.sub(r"([,.;:!?，。！？；：]){2,}", r"\1", rewritten)
+    rewritten = re.sub(r"\s+", " ", rewritten).strip(" ,.;:!?，。！？；：")
+    return normalize_text(rewritten)
+
+
+def should_accept_rewrite(
+    base_text: str,
+    rewritten_text: str,
+    max_expansion_ratio: float,
+    protected_terms: list[str],
+) -> tuple[bool, str | None]:
+    if not rewritten_text:
+        return False, "rewrite_empty"
+    base_compact = normalize_text(base_text)
+    rewritten_compact = normalize_text(rewritten_text)
+    if not base_compact:
+        return False, "rewrite_empty"
+    if len(rewritten_compact) > max(1, math.ceil(len(base_compact) * max_expansion_ratio)):
+        return False, "rewrite_expanded_too_much"
+    rewritten_lower = rewritten_compact.lower()
+    for term in protected_terms:
+        if term and term.lower() not in rewritten_lower:
+            return False, "rewrite_dropped_dictionary_term"
+    return True, None
 
 
 @dataclass
@@ -1197,6 +1305,12 @@ class SidecarApp:
             translate_model=str(payload.get("translateModel", "google")),
             chunk_ms=int(payload.get("chunkMs", 400)),
             partial_stable_ms=int(payload.get("partialStableMs", 500)),
+            dictation_rewrite_mode=str(payload.get("dictationRewriteMode", "disabled")),
+            dictation_dictionary_enabled=bool(payload.get("dictationDictionaryEnabled", False)),
+            dictation_cloud_enhancement_enabled=bool(payload.get("dictationCloudEnhancementEnabled", False)),
+            dictation_output_style=str(payload.get("dictationOutputStyle", "literal")),
+            dictation_dictionary_text=str(payload.get("dictationDictionaryText", "")),
+            dictation_max_rewrite_expansion_ratio=float(payload.get("dictationMaxRewriteExpansionRatio", 1.3)),
         )
         set_emit_context(self.config.mode, self.config.session_id)
         if self.config.mode == "dictation":
@@ -1277,6 +1391,10 @@ class SidecarApp:
                     self.dictation_last_update_ms,
                     convert_s2t=self.config.target_lang.lower() in {"zh-tw", "zh-hant"},
                     opencc_s2t=self.opencc_s2t,
+                    rewrite_mode=self.config.dictation_rewrite_mode,
+                    dictionary_enabled=self.config.dictation_dictionary_enabled,
+                    dictionary_text=self.config.dictation_dictionary_text,
+                    max_rewrite_expansion_ratio=self.config.dictation_max_rewrite_expansion_ratio,
                 )
             )
         emit({"type": "session_stopped_ack"})

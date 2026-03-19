@@ -329,6 +329,12 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
     bestOf: settings.bestOf,
     vadFilter: settings.vadFilter,
     conditionOnPrev: settings.conditionOnPrev,
+    dictationRewriteMode: isDictation ? settings.dictationRewriteMode : undefined,
+    dictationDictionaryEnabled: isDictation ? settings.dictationDictionaryEnabled : undefined,
+    dictationCloudEnhancementEnabled: isDictation ? settings.dictationCloudEnhancementEnabled : undefined,
+    dictationOutputStyle: isDictation ? settings.dictationOutputStyle : undefined,
+    dictationDictionaryText: isDictation ? settings.dictationDictionaryText : undefined,
+    dictationMaxRewriteExpansionRatio: isDictation ? settings.dictationMaxRewriteExpansionRatio : undefined,
   };
 }
 
@@ -745,6 +751,64 @@ function SettingsView({
             <p className="model-hint">SFSpeechRecognizer 不會做多語自動判斷。若你要中英混講或自動偵測，改用 SenseVoice。</p>
           )}
           <label>
+            句尾停頓偵測（{draft.dictationEndpointMs}ms）
+            <input
+              type="range"
+              min="600"
+              max="2000"
+              step="100"
+              value={draft.dictationEndpointMs}
+              onChange={(event) => setDraft({ ...draft, dictationEndpointMs: Number(event.target.value) })}
+            />
+          </label>
+          <label>
+            輸出文字風格
+            <select
+              value={draft.dictationOutputStyle}
+              onChange={(event) => setDraft({ ...draft, dictationOutputStyle: event.target.value as AppSettings['dictationOutputStyle'] })}
+            >
+              <option value="literal">原文</option>
+              <option value="polished">潤飾後</option>
+            </select>
+          </label>
+          <label>
+            整理模式
+            <select
+              value={draft.dictationRewriteMode}
+              onChange={(event) => {
+                const mode = event.target.value as AppSettings['dictationRewriteMode'];
+                setDraft({
+                  ...draft,
+                  dictationRewriteMode: mode,
+                  dictationCloudEnhancementEnabled: mode === 'rules-and-cloud',
+                });
+              }}
+            >
+              <option value="disabled">關閉</option>
+              <option value="rules">規則整理</option>
+              <option value="rules-and-cloud">規則 + 雲端增強</option>
+              <option value="rules-and-local-llm">規則 + 本地 LLM</option>
+            </select>
+          </label>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={draft.dictationDictionaryEnabled}
+              onChange={(event) => setDraft({ ...draft, dictationDictionaryEnabled: event.target.checked })}
+            />
+            啟用自訂字典
+          </label>
+          <label>
+            自訂字典
+            <textarea
+              rows={6}
+              value={draft.dictationDictionaryText}
+              onChange={(event) => setDraft({ ...draft, dictationDictionaryText: event.target.value })}
+              placeholder={'spoken => canonical\nchat g p t => ChatGPT\nbicaption => BiCaption'}
+            />
+          </label>
+          <p className="model-hint">每行一條，格式為 <code>{'spoken => canonical'}</code>。左邊可寫常見誤轉或口語說法。</p>
+          <label>
             輸出方式
             <select
               value={draft.dictationOutputAction}
@@ -759,6 +823,12 @@ function SettingsView({
             <p className="model-hint">
               自動貼上需要 Accessibility 權限。若貼上失敗，文字仍會保留在剪貼簿。
             </p>
+          )}
+          {draft.dictationRewriteMode === 'rules-and-cloud' && (
+            <p className="model-hint">雲端增強尚未接入實際 provider，目前會回退到規則整理。</p>
+          )}
+          {draft.dictationRewriteMode === 'rules-and-local-llm' && (
+            <p className="model-hint">本地 LLM 尚未接入實際 provider，目前會回退到規則整理。</p>
           )}
           <p className="model-hint">按住快捷鍵開始語音輸入，放開後結束並輸出文字。</p>
         </article>

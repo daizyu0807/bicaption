@@ -34,6 +34,7 @@ export const defaultSettings: AppSettings = {
   dictationCloudEnhancementEnabled: false,
   dictationOutputStyle: 'polished',
   dictationMaxRewriteExpansionRatio: 1.3,
+  dictationDictionaryText: '',
   saveEnabled: false,
   saveDirectory: '',
   overlayOpacity: 0.9,

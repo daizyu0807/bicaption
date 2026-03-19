@@ -37,12 +37,15 @@ for module_name, attrs in {
         sys.modules[module_name] = module
 
 from sidecar import (
+    apply_dictation_dictionary,
+    apply_dictation_rules_rewrite,
     FallbackTranslator,
     build_dictation_final_event,
     build_dictation_state_event,
     looks_like_garbage_text,
     make_segment_id,
     normalize_text,
+    parse_dictation_dictionary,
 )
 
 
@@ -97,6 +100,64 @@ class TranslationProviderTest(unittest.TestCase):
         )
         self.assertEqual(event["literalTranscript"], "漢語 输入")
         self.assertEqual(event["finalText"], "漢語 输入")
+
+    def test_parse_dictation_dictionary_ignores_invalid_lines(self) -> None:
+        entries = parse_dictation_dictionary("""
+        # comment
+        chat g p t => ChatGPT
+        invalid line
+        bicaption => BiCaption
+        """)
+        self.assertEqual(entries, [("chat g p t", "ChatGPT"), ("bicaption", "BiCaption")])
+
+    def test_apply_dictation_dictionary_replaces_known_terms(self) -> None:
+        replaced = apply_dictation_dictionary(
+            "chat g p t works with bicaption",
+            [("chat g p t", "ChatGPT"), ("bicaption", "BiCaption")],
+        )
+        self.assertEqual(replaced, "ChatGPT works with BiCaption")
+
+    def test_apply_dictation_rules_rewrite_removes_fillers_and_duplicates(self) -> None:
+        rewritten = apply_dictation_rules_rewrite("um um hello hello 那個 world")
+        self.assertEqual(rewritten, "hello world")
+
+    def test_dictation_final_event_applies_dictionary_and_rules(self) -> None:
+        event = build_dictation_final_event(
+            "session-3",
+            ["um chat g p t", "works works"],
+            10,
+            80,
+            rewrite_mode="rules",
+            dictionary_enabled=True,
+            dictionary_text="chat g p t => ChatGPT",
+        )
+        self.assertEqual(event["literalTranscript"], "um chat g p t works works")
+        self.assertEqual(event["dictionaryText"], "um ChatGPT works works")
+        self.assertEqual(event["finalText"], "ChatGPT works")
+        self.assertEqual(event["rewriteBackend"], "rules")
+        self.assertTrue(event["rewriteApplied"])
+
+    def test_dictation_final_event_sets_fallback_reason_for_cloud_mode(self) -> None:
+        event = build_dictation_final_event(
+            "session-4",
+            ["hello world"],
+            10,
+            80,
+            rewrite_mode="rules-and-cloud",
+        )
+        self.assertEqual(event["finalText"], "hello world")
+        self.assertEqual(event["fallbackReason"], "cloud_rewrite_unavailable")
+
+    def test_dictation_final_event_sets_fallback_reason_for_local_llm_mode(self) -> None:
+        event = build_dictation_final_event(
+            "session-5",
+            ["hello world"],
+            10,
+            80,
+            rewrite_mode="rules-and-local-llm",
+        )
+        self.assertEqual(event["finalText"], "hello world")
+        self.assertEqual(event["fallbackReason"], "local_llm_rewrite_unavailable")
 
 
 if __name__ == "__main__":

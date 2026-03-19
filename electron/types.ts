@@ -30,6 +30,12 @@ export interface CaptionConfig {
   bestOf: number;
   vadFilter: boolean;
   conditionOnPrev: boolean;
+  dictationRewriteMode?: 'disabled' | 'rules' | 'rules-and-cloud' | 'rules-and-local-llm';
+  dictationDictionaryEnabled?: boolean;
+  dictationCloudEnhancementEnabled?: boolean;
+  dictationOutputStyle?: 'literal' | 'polished';
+  dictationDictionaryText?: string;
+  dictationMaxRewriteExpansionRatio?: number;
 }
 
 interface SessionScopedEvent {
@@ -157,6 +163,7 @@ export interface AppSettings {
   dictationCloudEnhancementEnabled: boolean;
   dictationOutputStyle: 'literal' | 'polished';
   dictationMaxRewriteExpansionRatio: number;
+  dictationDictionaryText: string;
   saveEnabled: boolean;
   saveDirectory: string;
   overlayOpacity: number;
