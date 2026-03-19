@@ -46,6 +46,8 @@ function OverlayView({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; winX: number; winY: number } | null>(null);
   const suppressOrbClickRef = useRef(false);
+  const [dictationVisualTone, setDictationVisualTone] = useState<'live' | 'processing' | 'done'>('live');
+  const dictationVisualTimeoutRef = useRef<number | null>(null);
   const dictationPrompt = getDictationPrompt(dictationState, showDictationResult);
   const effectiveDictationPrompt = overlayMode === 'dictation'
     ? dictationPrompt ?? {
@@ -86,6 +88,31 @@ function OverlayView({
   }, [dictationState.finalText]);
 
   useEffect(() => {
+    if (!effectiveDictationPrompt) {
+      return;
+    }
+    if (dictationVisualTimeoutRef.current) {
+      window.clearTimeout(dictationVisualTimeoutRef.current);
+      dictationVisualTimeoutRef.current = null;
+    }
+    if (effectiveDictationPrompt.tone === 'done') {
+      setDictationVisualTone('processing');
+      dictationVisualTimeoutRef.current = window.setTimeout(() => {
+        setDictationVisualTone('done');
+        dictationVisualTimeoutRef.current = null;
+      }, 420);
+      return;
+    }
+    setDictationVisualTone(effectiveDictationPrompt.tone);
+    return () => {
+      if (dictationVisualTimeoutRef.current) {
+        window.clearTimeout(dictationVisualTimeoutRef.current);
+        dictationVisualTimeoutRef.current = null;
+      }
+    };
+  }, [effectiveDictationPrompt]);
+
+  useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       const drag = dragRef.current;
       if (!drag) return;
@@ -120,7 +147,7 @@ function OverlayView({
     return (
       <main className="overlay-window overlay-window-dictation" style={overlayStyle}>
         <section
-          className={`dictation-float-shell dictation-float-shell-${effectiveDictationPrompt.tone}`}
+          className={`dictation-float-shell dictation-float-shell-${dictationVisualTone}`}
           onMouseDown={async (e) => {
             if (!(e.target as HTMLElement).closest('.dictation-float-orb')) {
               return;
@@ -131,7 +158,7 @@ function OverlayView({
           }}
         >
           <button
-            className={`dictation-float-orb dictation-float-${effectiveDictationPrompt.tone}`}
+            className={`dictation-float-orb dictation-float-${dictationVisualTone}`}
             onClick={(e) => {
               if (suppressOrbClickRef.current) {
                 suppressOrbClickRef.current = false;
@@ -143,7 +170,7 @@ function OverlayView({
             }}
             aria-label={effectiveDictationPrompt.title}
           >
-            {effectiveDictationPrompt.tone === 'live' ? (
+            {dictationVisualTone === 'live' ? (
               <>
                 <span className="dictation-float-wave dictation-float-wave-a" />
                 <span className="dictation-float-wave dictation-float-wave-b" />
@@ -155,7 +182,7 @@ function OverlayView({
                 </span>
               </>
             ) : null}
-            {effectiveDictationPrompt.tone === 'processing' ? (
+            {dictationVisualTone === 'processing' ? (
               <span className="dictation-float-processing-glyph" aria-hidden="true">
                 <span className="dictation-float-spinner" />
                 <span className="dictation-float-dot dictation-float-dot-a" />
@@ -163,7 +190,7 @@ function OverlayView({
                 <span className="dictation-float-dot dictation-float-dot-c" />
               </span>
             ) : null}
-            {effectiveDictationPrompt.tone === 'done' ? (
+            {dictationVisualTone === 'done' ? (
               <span className="dictation-float-done-glyph" aria-hidden="true">
                 <span className="dictation-float-check" />
               </span>
