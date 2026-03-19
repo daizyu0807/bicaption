@@ -37,6 +37,12 @@ let overlayMode: 'hidden' | 'subtitle' | 'dictation' = 'hidden';
 let subtitleOverlayBoundsCache: OverlayBounds | null = null;
 let tray: Tray | null = null;
 
+const DEFAULT_SUBTITLE_OVERLAY_WIDTH = 900;
+const DEFAULT_SUBTITLE_OVERLAY_HEIGHT = 220;
+const MIN_SUBTITLE_OVERLAY_WIDTH = 420;
+const MIN_SUBTITLE_OVERLAY_HEIGHT = 140;
+const DICTATION_OVERLAY_SIZE = 56;
+
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
 const modelDownloader = new ModelDownloader(getModelDir());
@@ -116,6 +122,41 @@ function setOverlayMode(mode: 'hidden' | 'subtitle' | 'dictation') {
   }
   overlayMode = mode;
   sendToWindows('overlay:mode', { mode });
+}
+
+function isSubtitleSizedBounds(bounds: OverlayBounds | Electron.Rectangle) {
+  return bounds.width >= MIN_SUBTITLE_OVERLAY_WIDTH && bounds.height >= MIN_SUBTITLE_OVERLAY_HEIGHT;
+}
+
+function getDefaultSubtitleOverlayBounds() {
+  const primary = screen.getPrimaryDisplay();
+  const settings = loadSettings();
+  const width = Math.max(MIN_SUBTITLE_OVERLAY_WIDTH, settings.overlayWidth || DEFAULT_SUBTITLE_OVERLAY_WIDTH);
+  const height = Math.max(MIN_SUBTITLE_OVERLAY_HEIGHT, settings.overlayHeight || DEFAULT_SUBTITLE_OVERLAY_HEIGHT);
+  const defaultX = Math.round((primary.workArea.width - width) / 2);
+  const defaultY = primary.workArea.height - height - 40;
+  return {
+    x: settings.overlayX ?? defaultX,
+    y: settings.overlayY ?? defaultY,
+    width,
+    height,
+  } satisfies OverlayBounds;
+}
+
+function getSubtitleOverlayBounds() {
+  if (subtitleOverlayBoundsCache && isSubtitleSizedBounds(subtitleOverlayBoundsCache)) {
+    return subtitleOverlayBoundsCache;
+  }
+  return getDefaultSubtitleOverlayBounds();
+}
+
+function restoreSubtitleOverlayBounds() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return;
+  }
+  const nextBounds = getSubtitleOverlayBounds();
+  subtitleOverlayBoundsCache = nextBounds;
+  overlayWindow.setBounds(nextBounds);
 }
 
 function handleDictationFinal(event: SidecarEvent) {
@@ -375,9 +416,7 @@ function setOverlayVisible(visible: boolean) {
     if (!overlayWindow || overlayWindow.isDestroyed()) {
       createOverlayWindow();
     }
-    if (overlayWindow && subtitleOverlayBoundsCache) {
-      overlayWindow.setBounds(subtitleOverlayBoundsCache);
-    }
+    restoreSubtitleOverlayBounds();
     overlayWindow?.showInactive();
   } else {
     setOverlayMode('hidden');
@@ -401,10 +440,13 @@ function showDictationOverlay() {
     createOverlayWindow();
   }
   if (overlayWindow) {
-    subtitleOverlayBoundsCache = overlayWindow.getBounds();
+    const currentBounds = overlayWindow.getBounds();
+    if (isSubtitleSizedBounds(currentBounds)) {
+      subtitleOverlayBoundsCache = currentBounds;
+    }
     const current = overlayWindow.getBounds();
-    const width = 56;
-    const height = 56;
+    const width = DICTATION_OVERLAY_SIZE;
+    const height = DICTATION_OVERLAY_SIZE;
     const x = Math.round(current.x + (current.width - width) / 2);
     const y = Math.round(current.y + current.height - height);
     overlayWindow.setBounds({ x, y, width, height });
@@ -417,9 +459,7 @@ function hideDictationOverlaySoon(delayMs = 1800) {
   dictationOverlayHideTimeout = setTimeout(() => {
     dictationOverlayHideTimeout = null;
     if (activeSessionMode === 'subtitle') {
-      if (overlayWindow && subtitleOverlayBoundsCache) {
-        overlayWindow.setBounds(subtitleOverlayBoundsCache);
-      }
+      restoreSubtitleOverlayBounds();
       setOverlayMode('subtitle');
       return;
     }
@@ -531,17 +571,12 @@ function createTray() {
 }
 
 function createOverlayWindow() {
-  const primary = screen.getPrimaryDisplay();
-  const settings = loadSettings();
-  const initialWidth = settings.overlayWidth || 900;
-  const initialHeight = settings.overlayHeight || 220;
-  const defaultX = Math.round((primary.workArea.width - initialWidth) / 2);
-  const defaultY = primary.workArea.height - initialHeight - 40;
+  const subtitleBounds = getDefaultSubtitleOverlayBounds();
   overlayWindow = new BrowserWindow({
-    width: initialWidth,
-    height: initialHeight,
-    x: settings.overlayX ?? defaultX,
-    y: settings.overlayY ?? defaultY,
+    width: subtitleBounds.width,
+    height: subtitleBounds.height,
+    x: subtitleBounds.x,
+    y: subtitleBounds.y,
     frame: false,
     transparent: true,
     resizable: true,
@@ -839,18 +874,18 @@ app.whenReady().then(() => {
     overlayWindow?.setPosition(Math.round(x), Math.round(y));
   });
   ipcMain.handle('overlay:get-bounds', () => {
-    return overlayWindow?.getBounds() ?? { x: 0, y: 0, width: 900, height: 220 };
+    return overlayWindow?.getBounds() ?? getDefaultSubtitleOverlayBounds();
   });
   ipcMain.handle('overlay:set-bounds', (_event, partial: Partial<OverlayBounds>) => {
     if (!overlayWindow) {
-      return { x: 0, y: 0, width: 900, height: 220 };
+      return getDefaultSubtitleOverlayBounds();
     }
     const current = overlayWindow.getBounds();
     const next = {
       x: partial.x ?? current.x,
       y: partial.y ?? current.y,
-      width: Math.max(420, partial.width ?? current.width),
-      height: Math.max(140, partial.height ?? current.height),
+      width: Math.max(MIN_SUBTITLE_OVERLAY_WIDTH, partial.width ?? current.width),
+      height: Math.max(MIN_SUBTITLE_OVERLAY_HEIGHT, partial.height ?? current.height),
     };
     overlayWindow.setBounds(next);
     persistOverlayBounds();
@@ -903,6 +938,7 @@ app.whenReady().then(() => {
     if (!overlayWindow || overlayWindow.isDestroyed()) {
       createOverlayWindow();
     }
+    restoreSubtitleOverlayBounds();
     overlayWindow?.showInactive();
     rebuildTrayMenu();
     return { ok: true };
