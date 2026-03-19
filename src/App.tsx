@@ -468,6 +468,7 @@ function SettingsView({
 }) {
   const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation'>('subtitle');
   const [draft, setDraft] = useState(settings);
+  const [subtitleAdvancedOpen, setSubtitleAdvancedOpen] = useState(false);
   const [dictationAdvancedOpen, setDictationAdvancedOpen] = useState(false);
   const [dictationDiagnosticsOpen, setDictationDiagnosticsOpen] = useState(false);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
@@ -484,8 +485,6 @@ function SettingsView({
   const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
   const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
   const localLlmEnabled = draft.dictationRewriteMode === 'rules-and-local-llm';
-  const dictationOutputLabel = draft.dictationOutputStyle === 'polished' ? '潤飾後文字' : '原文逐字稿';
-  const dictationPermissionReady = Boolean(accessibilityPermission?.trusted) && Boolean(inputMonitoringPermission?.trusted);
   const dictationDiagnosticsAvailable = Boolean(
     dictationViewState.literalTranscript
     || dictationViewState.dictionaryText
@@ -660,21 +659,10 @@ function SettingsView({
               <h2 className="dictation-hero-title">把語音輸入縮成幾個必要選擇。</h2>
               <p className="dictation-hero-text">按住快捷鍵說話，放開後直接輸出文字。規則整理固定啟用，本地 LLM 只在你需要更自然的文字時介入。</p>
             </div>
-            <div className="dictation-hero-badges">
-              <div className="dictation-stat-chip">
-                <span className="dictation-stat-label">快捷鍵</span>
-                <strong>{getDictationHotkeyLabel(hotkeyBinding)}</strong>
-              </div>
-              <div className="dictation-stat-chip">
-                <span className="dictation-stat-label">輸出風格</span>
-                <strong>{dictationOutputLabel}</strong>
-              </div>
-              <div className={`dictation-status-pill ${localLlmEnabled ? 'is-llm' : 'is-rules'}`}>
-                {localLlmEnabled ? '本地 LLM 已開啟' : '規則整理模式'}
-              </div>
-              <div className={`dictation-status-pill ${dictationPermissionReady ? 'is-ready' : 'is-warning'}`}>
-                {dictationPermissionReady ? '權限已就緒' : '仍需權限設定'}
-              </div>
+            <div className="dictation-hero-notes">
+              <p><strong>快捷鍵</strong>{getDictationHotkeyLabel(hotkeyBinding)}</p>
+              <p><strong>輸出</strong>{draft.dictationOutputStyle === 'polished' ? '潤飾後文字' : '原文逐字稿'}</p>
+              <p><strong>整理</strong>{localLlmEnabled ? '規則 + 本地 LLM' : '規則整理'}</p>
             </div>
           </article>
 
@@ -1021,131 +1009,180 @@ function SettingsView({
         )}
 
         {activeSettingsTab === 'subtitle' && (
-        <div className="subtitle-grid settings-content-grid">
-        <article className="panel">
-          <h2>Bilingual Capture</h2>
-          <label>
-            輸入裝置（麥克風）
-            <select
-              value={draft.subtitleDeviceId}
-              onChange={(event) => setDraft({ ...draft, subtitleDeviceId: event.target.value })}
-            >
-              {inputDevices.map((device) => (
-                <option key={device.id} value={device.id}>
-                  {device.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            語音辨識引擎
-            <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
-              <option value="apple-stt">SFSpeechRecognizer — macOS 內建，免下載，串流翻譯</option>
-              <option value="sensevoice">SenseVoice — 多語言混合辨識，支援中英日韓</option>
-            </select>
-          </label>
-          {draft.sttModel === 'apple-stt' && (
-            <>
-              <label>
-                翻譯觸發延遲（{draft.partialStableMs}ms）
-                <input type="range" min="200" max="2000" step="100" value={draft.partialStableMs} onChange={(event) => setDraft({ ...draft, partialStableMs: Number(event.target.value) })} />
-              </label>
-              <p className="model-hint">SFSpeechRecognizer 會依照目前的 Source lang 辨識，不會做多語自動判斷。若你講中文，請改成「中文」或改用 SenseVoice + 自動偵測。</p>
-            </>
-          )}
-          <label>
-            系統音訊（Loopback）
-            <select value={draft.outputDeviceId} onChange={(event) => setDraft({ ...draft, outputDeviceId: event.target.value })}>
-              <option value="">系統預設</option>
-              {loopbackDevices.map((device) => (
-                <option key={device.id} value={device.id}>
-                  {device.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="form-row-2">
-            <label>
-              Source lang
-              <select value={draft.sourceLang} onChange={(event) => {
-                const lang = event.target.value;
-                const recommended = lang === 'auto' ? 'sensevoice' : 'apple-stt';
-                setDraft({ ...draft, sourceLang: lang, sttModel: recommended });
-              }}>
-                <option value="auto">自動偵測</option>
-                <option value="en">English</option>
-                <option value="zh">中文</option>
-                <option value="ja">日本語</option>
-                <option value="ko">한국어</option>
-              </select>
-            </label>
-            <label>
-              Target lang
-              <select value={draft.targetLang} onChange={(event) => setDraft({ ...draft, targetLang: event.target.value })} disabled={!translationOn}>
-                <option value="zh-TW">繁體中文</option>
-                <option value="en">English</option>
-                <option value="ja">日本語</option>
-                <option value="ko">한국어</option>
-              </select>
-            </label>
-          </div>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={translationOn}
-              onChange={(event) => setDraft({
-                ...draft,
-                translateModel: event.target.checked ? 'google' : 'disabled',
-                targetLang: event.target.checked ? (draft.targetLang === draft.sourceLang ? 'zh-TW' : draft.targetLang) : draft.targetLang,
-              })}
-            />
-            雙語字幕
-          </label>
-          <button className={overlaySuppressedLocal ? 'secondary' : ''} onClick={() => {
-            if (overlaySuppressedLocal) {
-              window.app.showOverlay();
-              setOverlaySuppressedLocal(false);
-            } else {
-              window.app.hideOverlay();
-              setOverlaySuppressedLocal(true);
-            }
-          }}>
-            {overlaySuppressedLocal ? '顯示字幕' : '隱藏字幕'}
-          </button>
-        </article>
-        
-
-        <article className="panel">
-          <h2>Subtitle Output</h2>
-          <div className="form-row-2">
-            <label>
-              Opacity
-              <input type="range" min="0.3" max="1" step="0.05" value={draft.overlayOpacity} onChange={(event) => setDraft({ ...draft, overlayOpacity: Number(event.target.value) })} />
-            </label>
-            <label>
-              Font scale
-              <input type="range" min="0.8" max="1.8" step="0.1" value={draft.overlayFontScale} onChange={(event) => setDraft({ ...draft, overlayFontScale: Number(event.target.value) })} />
-            </label>
-          </div>
-          <label className="toggle-row">
-            <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
-            保存字幕記錄
-          </label>
-          {draft.saveEnabled && (
-            <div className="save-path-row">
-              <span className="save-path-text">{draft.saveDirectory || '未設定'}</span>
-              <button className="secondary" onClick={async () => {
-                const dir = await window.app.chooseSaveDirectory();
-                if (dir) {
-                  setDraft({ ...draft, saveDirectory: dir });
-                }
-              }}>選擇</button>
-              {draft.saveDirectory && (
-                <button className="secondary" onClick={() => window.app.openSaveDirectory()}>查看</button>
-              )}
+        <div className="subtitle-workspace settings-content-grid">
+          <article className="dictation-hero subtitle-hero">
+            <div className="dictation-hero-copy">
+              <p className="dictation-kicker">Live Subtitles</p>
+              <h2 className="dictation-hero-title">把字幕顯示和輸入來源分清楚。</h2>
+              <p className="dictation-hero-text">字幕模式重點是穩定和低延遲。主畫面只放來源、翻譯與顯示方式，辨識細節收進進階。</p>
             </div>
-          )}
-        </article>
+            <div className="dictation-hero-notes">
+              <p><strong>來源語言</strong>{draft.sourceLang === 'auto' ? '自動偵測' : draft.sourceLang}</p>
+              <p><strong>雙語字幕</strong>{translationOn ? '已開啟' : '未開啟'}</p>
+              <p><strong>顯示</strong>{overlaySuppressedLocal ? '目前隱藏' : '目前顯示'}</p>
+            </div>
+          </article>
+
+          <div className="dictation-flow-grid">
+            <article className="dictation-section dictation-section-primary">
+              <div className="dictation-section-header">
+                <div>
+                  <p className="dictation-section-kicker">來源</p>
+                  <h3 className="dictation-section-title">決定要聽哪裡、翻成什麼</h3>
+                  <p className="dictation-section-copy">把麥克風、系統音訊、來源語言和雙語輸出先定下來，這是字幕頁最常碰的設定。</p>
+                </div>
+              </div>
+              <label>
+                輸入裝置（麥克風）
+                <select
+                  value={draft.subtitleDeviceId}
+                  onChange={(event) => setDraft({ ...draft, subtitleDeviceId: event.target.value })}
+                >
+                  {inputDevices.map((device) => (
+                    <option key={device.id} value={device.id}>
+                      {device.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                系統音訊（Loopback）
+                <select value={draft.outputDeviceId} onChange={(event) => setDraft({ ...draft, outputDeviceId: event.target.value })}>
+                  <option value="">系統預設</option>
+                  {loopbackDevices.map((device) => (
+                    <option key={device.id} value={device.id}>
+                      {device.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="dictation-inline-grid">
+                <label>
+                  來源語言
+                  <select value={draft.sourceLang} onChange={(event) => {
+                    const lang = event.target.value;
+                    const recommended = lang === 'auto' ? 'sensevoice' : 'apple-stt';
+                    setDraft({ ...draft, sourceLang: lang, sttModel: recommended });
+                  }}>
+                    <option value="auto">自動偵測</option>
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                  </select>
+                </label>
+                <label>
+                  目標語言
+                  <select value={draft.targetLang} onChange={(event) => setDraft({ ...draft, targetLang: event.target.value })} disabled={!translationOn}>
+                    <option value="zh-TW">繁體中文</option>
+                    <option value="en">English</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                  </select>
+                </label>
+              </div>
+              <label className="toggle-row dictation-feature-toggle">
+                <input
+                  type="checkbox"
+                  checked={translationOn}
+                  onChange={(event) => setDraft({
+                    ...draft,
+                    translateModel: event.target.checked ? 'google' : 'disabled',
+                    targetLang: event.target.checked ? (draft.targetLang === draft.sourceLang ? 'zh-TW' : draft.targetLang) : draft.targetLang,
+                  })}
+                />
+                <span>
+                  啟用雙語字幕
+                  <small>關閉後只顯示原文字幕，可降低視覺密度與翻譯成本。</small>
+                </span>
+              </label>
+            </article>
+
+            <article className="dictation-section">
+              <div className="dictation-section-header">
+                <div>
+                  <p className="dictation-section-kicker">顯示</p>
+                  <h3 className="dictation-section-title">決定字幕看起來怎麼樣</h3>
+                  <p className="dictation-section-copy">把字幕本身當成視覺輸出來看，常用的只剩顯示、大小、透明度和是否保存。</p>
+                </div>
+              </div>
+              <div className="dictation-inline-grid">
+                <label>
+                  透明度
+                  <input type="range" min="0.3" max="1" step="0.05" value={draft.overlayOpacity} onChange={(event) => setDraft({ ...draft, overlayOpacity: Number(event.target.value) })} />
+                </label>
+                <label>
+                  字體大小
+                  <input type="range" min="0.8" max="1.8" step="0.1" value={draft.overlayFontScale} onChange={(event) => setDraft({ ...draft, overlayFontScale: Number(event.target.value) })} />
+                </label>
+              </div>
+              <button className={overlaySuppressedLocal ? 'secondary' : ''} onClick={() => {
+                if (overlaySuppressedLocal) {
+                  window.app.showOverlay();
+                  setOverlaySuppressedLocal(false);
+                } else {
+                  window.app.hideOverlay();
+                  setOverlaySuppressedLocal(true);
+                }
+              }}>
+                {overlaySuppressedLocal ? '顯示字幕' : '隱藏字幕'}
+              </button>
+              <label className="toggle-row">
+                <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
+                保存字幕記錄
+              </label>
+              {draft.saveEnabled && (
+                <div className="save-path-row">
+                  <span className="save-path-text">{draft.saveDirectory || '未設定'}</span>
+                  <button className="secondary" onClick={async () => {
+                    const dir = await window.app.chooseSaveDirectory();
+                    if (dir) {
+                      setDraft({ ...draft, saveDirectory: dir });
+                    }
+                  }}>選擇</button>
+                  {draft.saveDirectory && (
+                    <button className="secondary" onClick={() => window.app.openSaveDirectory()}>查看</button>
+                  )}
+                </div>
+              )}
+            </article>
+          </div>
+
+          <div className="dictation-detail-stack">
+            <article className="dictation-section dictation-section-collapsible">
+              <button
+                className="dictation-collapse-toggle"
+                type="button"
+                onClick={() => setSubtitleAdvancedOpen((open) => !open)}
+              >
+                <span>
+                  <span className="dictation-section-kicker">進階</span>
+                  <strong>辨識引擎與翻譯節奏</strong>
+                </span>
+                <span>{subtitleAdvancedOpen ? '收合' : '展開'}</span>
+              </button>
+              {subtitleAdvancedOpen && (
+                <div className="dictation-collapsible-body">
+                  <label>
+                    語音辨識引擎
+                    <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
+                      <option value="apple-stt">SFSpeechRecognizer</option>
+                      <option value="sensevoice">SenseVoice</option>
+                    </select>
+                  </label>
+                  {draft.sttModel === 'apple-stt' && (
+                    <>
+                      <label>
+                        翻譯觸發延遲（{draft.partialStableMs}ms）
+                        <input type="range" min="200" max="2000" step="100" value={draft.partialStableMs} onChange={(event) => setDraft({ ...draft, partialStableMs: Number(event.target.value) })} />
+                      </label>
+                      <p className="model-hint">SFSpeechRecognizer 會依照目前的來源語言辨識，不會做多語自動判斷。若你常中英混講，改用 SenseVoice。</p>
+                    </>
+                  )}
+                </div>
+              )}
+            </article>
+          </div>
         </div>
         )}
       </section>
