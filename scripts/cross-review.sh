@@ -146,7 +146,7 @@ run_review() {
       printf '%s' "$prompt" | codex exec -
       ;;
     claude)
-      printf '%s' "$prompt" | claude -p
+      run_claude_headless "$prompt"
       ;;
     gemini)
       run_gemini_headless "$prompt"

@@ -140,3 +140,8 @@ run_gemini_headless() {
   rm -f "$stdout_path" "$stderr_path"
   return "$exit_code"
 }
+
+run_claude_headless() {
+  local prompt="$1"
+  printf '%s' "$prompt" | claude -p --tools "" --no-session-persistence
+}
