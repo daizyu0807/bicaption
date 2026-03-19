@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from 'react';
+import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type {
   AppSettings,
   CaptionConfig,
@@ -466,6 +466,7 @@ function SettingsView({
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
+  const shellRef = useRef<HTMLElement | null>(null);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation'>('subtitle');
   const [draft, setDraft] = useState(settings);
   const [subtitleAdvancedOpen, setSubtitleAdvancedOpen] = useState(false);
@@ -594,9 +595,45 @@ function SettingsView({
 
   const modifierOnlyHotkey = isModifierOnlyHotkey(hotkeyBinding);
 
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) {
+      return;
+    }
+
+    let rafId = 0;
+    const reportHeight = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        void window.app.fitSettingsWindow(Math.ceil(shell.scrollHeight));
+      });
+    };
+
+    reportHeight();
+
+    const resizeObserver = new ResizeObserver(() => {
+      reportHeight();
+    });
+    resizeObserver.observe(shell);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+    };
+  }, [
+    activeSettingsTab,
+    subtitleAdvancedOpen,
+    dictationAdvancedOpen,
+    dictationDiagnosticsOpen,
+    draft.saveEnabled,
+    draft.dictationOutputAction,
+    localLlmEnabled,
+    inputMonitoringPermission?.trusted,
+  ]);
+
 
   return (
-    <main className="settings-shell">
+    <main className="settings-shell" ref={shellRef}>
       <header className="topbar">
         <div className="topbar-left">
           <h1 className="topbar-title">即時雙語字幕</h1>

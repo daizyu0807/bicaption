@@ -16,6 +16,7 @@ declare global {
     app: {
       loadSettings(): Promise<AppSettings>;
       saveSettings(partial: Partial<AppSettings>): Promise<AppSettings>;
+      fitSettingsWindow(height: number): Promise<{ ok: boolean }>;
       startSession(config: CaptionConfig): Promise<{ ok: boolean }>;
       stopSession(): Promise<{ ok: boolean }>;
       listDevices(): Promise<Array<{ id: string; label: string; kind: string }>>;
