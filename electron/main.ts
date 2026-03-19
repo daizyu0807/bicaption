@@ -229,21 +229,28 @@ function tryPasteClipboard(action: DictationOutputAction, expectedTarget: { appN
 }
 
 function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionConfig {
+  const isDictation = mode === 'dictation';
   return {
     mode,
     sessionId: randomUUID(),
-    deviceId: mode === 'dictation' ? settings.dictationDeviceId : settings.subtitleDeviceId,
+    deviceId: isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
     outputDeviceId: settings.outputDeviceId,
-    sourceLang: settings.sourceLang,
+    sourceLang: isDictation ? settings.dictationSourceLang : settings.sourceLang,
     targetLang: settings.targetLang,
-    sttModel: mode === 'dictation' ? settings.dictationSttModel : settings.sttModel,
+    sttModel: isDictation ? settings.dictationSttModel : settings.sttModel,
     translateModel: settings.translateModel,
-    chunkMs: settings.chunkMs,
-    partialStableMs: settings.partialStableMs,
+    chunkMs: isDictation ? settings.dictationChunkMs : settings.subtitleChunkMs,
+    partialStableMs: isDictation ? settings.dictationEndpointMs : settings.subtitlePartialStableMs,
     beamSize: settings.beamSize,
     bestOf: settings.bestOf,
     vadFilter: settings.vadFilter,
     conditionOnPrev: settings.conditionOnPrev,
+    dictationRewriteMode: isDictation ? settings.dictationRewriteMode : undefined,
+    dictationDictionaryEnabled: isDictation ? settings.dictationDictionaryEnabled : undefined,
+    dictationCloudEnhancementEnabled: isDictation ? settings.dictationCloudEnhancementEnabled : undefined,
+    dictationOutputStyle: isDictation ? settings.dictationOutputStyle : undefined,
+    dictationDictionaryText: isDictation ? settings.dictationDictionaryText : undefined,
+    dictationMaxRewriteExpansionRatio: isDictation ? settings.dictationMaxRewriteExpansionRatio : undefined,
   };
 }
 

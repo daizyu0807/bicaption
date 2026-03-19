@@ -403,16 +403,50 @@ function getDictationOutputActionLabel(action: DictationOutputAction) {
   }
 }
 
+function getRewriteBackendLabel(backend: 'disabled' | 'rules' | 'cloud-llm' | 'local-llm' | null) {
+  switch (backend) {
+    case 'disabled':
+      return '未整理';
+    case 'rules':
+      return '規則整理';
+    case 'cloud-llm':
+      return '雲端 LLM';
+    case 'local-llm':
+      return '本地 LLM';
+    default:
+      return '尚無結果';
+  }
+}
+
+function getRewriteFallbackLabel(reason: string | null) {
+  switch (reason) {
+    case 'cloud_rewrite_unavailable':
+      return '雲端 rewrite provider 尚未接入，已回退。';
+    case 'local_llm_rewrite_unavailable':
+      return '本地 LLM rewrite provider 尚未接入，已回退。';
+    case 'rewrite_empty':
+      return '整理結果為空，已回退到前一階段文字。';
+    case 'rewrite_expanded_too_much':
+      return '整理結果膨脹過多，已回退到前一階段文字。';
+    case 'rewrite_dropped_dictionary_term':
+      return '整理結果遺失字典詞條，已回退到前一階段文字。';
+    default:
+      return null;
+  }
+}
+
 function SettingsView({
   settings,
   devices,
   viewState,
+  dictationViewState,
   modelStatus,
   onSave,
 }: {
   settings: AppSettings;
   devices: Array<{ id: string; label: string; kind: string }>;
   viewState: ReturnType<typeof useCaptionState>;
+  dictationViewState: ReturnType<typeof useDictationState>;
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
@@ -832,6 +866,34 @@ function SettingsView({
           )}
           <p className="model-hint">按住快捷鍵開始語音輸入，放開後結束並輸出文字。</p>
         </article>
+        <article className="panel panel-compact">
+          <h2>最近一次輸入結果</h2>
+          <div className="dictation-summary-grid">
+            <div className="hotkey-event-box">
+              <span className="hotkey-event-label">整理 backend</span>
+              <span className="hotkey-event-value">{getRewriteBackendLabel(dictationViewState.rewriteBackend)}</span>
+            </div>
+            <div className="hotkey-event-box">
+              <span className="hotkey-event-label">延遲</span>
+              <span className="hotkey-event-value">{dictationViewState.finalLatencyMs ? `${dictationViewState.finalLatencyMs}ms` : '—'}</span>
+            </div>
+          </div>
+          <label>
+            Literal transcript
+            <textarea rows={3} value={dictationViewState.literalTranscript} readOnly />
+          </label>
+          <label>
+            Dictionary text
+            <textarea rows={3} value={dictationViewState.dictionaryText} readOnly />
+          </label>
+          <label>
+            Final text
+            <textarea rows={4} value={dictationViewState.finalText} readOnly />
+          </label>
+          {getRewriteFallbackLabel(dictationViewState.fallbackReason) && (
+            <p className="model-hint">{getRewriteFallbackLabel(dictationViewState.fallbackReason)}</p>
+          )}
+        </article>
         </div>
         )}
 
@@ -1078,5 +1140,5 @@ export function App() {
     return <OverlayView viewState={captionState} dictationState={dictationState} settings={settings} overlayMode={overlayMode} />;
   }
 
-  return <SettingsView settings={settings} devices={devices} viewState={captionState} modelStatus={modelStatus} onSave={onSave} />;
+  return <SettingsView settings={settings} devices={devices} viewState={captionState} dictationViewState={dictationState} modelStatus={modelStatus} onSave={onSave} />;
 }

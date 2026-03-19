@@ -146,6 +146,7 @@ class TranslationProviderTest(unittest.TestCase):
             rewrite_mode="rules-and-cloud",
         )
         self.assertEqual(event["finalText"], "hello world")
+        self.assertEqual(event["rewriteBackend"], "cloud-llm")
         self.assertEqual(event["fallbackReason"], "cloud_rewrite_unavailable")
 
     def test_dictation_final_event_sets_fallback_reason_for_local_llm_mode(self) -> None:
@@ -157,6 +158,7 @@ class TranslationProviderTest(unittest.TestCase):
             rewrite_mode="rules-and-local-llm",
         )
         self.assertEqual(event["finalText"], "hello world")
+        self.assertEqual(event["rewriteBackend"], "local-llm")
         self.assertEqual(event["fallbackReason"], "local_llm_rewrite_unavailable")
 
 

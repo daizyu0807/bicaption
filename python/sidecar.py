@@ -115,33 +115,31 @@ def build_dictation_final_event(
     rewrite_applied = False
     fallback_reason: str | None = None
     protected_terms = [canonical for _, canonical in dictionary_entries]
+    if rewrite_mode != "disabled":
+        rules_result = RulesRewriteProvider().rewrite(
+            dictionary_result,
+            max_rewrite_expansion_ratio,
+            protected_terms,
+        )
+        final_text = rules_result.text
+        rewrite_backend = rules_result.backend
+        rewrite_applied = rules_result.applied
+        fallback_reason = rules_result.fallback_reason
 
-    if rewrite_mode == "rules":
-        candidate = apply_dictation_rules_rewrite(dictionary_result)
-        accepted, fallback_reason = should_accept_rewrite(
-            dictionary_result,
-            candidate,
-            max_rewrite_expansion_ratio,
-            protected_terms,
-        )
-        if accepted:
-            final_text = candidate
-            rewrite_backend = "rules"
-            rewrite_applied = candidate != dictionary_result
-    elif rewrite_mode in {"rules-and-cloud", "rules-and-local-llm"}:
-        candidate = apply_dictation_rules_rewrite(dictionary_result)
-        accepted, guardrail_reason = should_accept_rewrite(
-            dictionary_result,
-            candidate,
-            max_rewrite_expansion_ratio,
-            protected_terms,
-        )
-        if accepted:
-            final_text = candidate
-            rewrite_backend = "rules"
-            rewrite_applied = candidate != dictionary_result
-        provider_reason = "cloud_rewrite_unavailable" if rewrite_mode == "rules-and-cloud" else "local_llm_rewrite_unavailable"
-        fallback_reason = guardrail_reason or provider_reason
+        provider = get_dictation_rewrite_provider(rewrite_mode)
+        if provider is not None and provider.backend != "rules":
+            provider_result = provider.rewrite(
+                final_text,
+                max_rewrite_expansion_ratio,
+                protected_terms,
+            )
+            rewrite_backend = provider_result.backend
+            if provider_result.applied:
+                final_text = provider_result.text
+                rewrite_applied = True
+                fallback_reason = provider_result.fallback_reason
+            elif fallback_reason is None:
+                fallback_reason = provider_result.fallback_reason
 
     return {
         "type": "dictation_final",
@@ -341,6 +339,14 @@ class SessionConfig:
     dictation_max_rewrite_expansion_ratio: float = 1.3
 
 
+@dataclass
+class DictationRewriteResult:
+    text: str
+    backend: str
+    applied: bool
+    fallback_reason: str | None = None
+
+
 def parse_dictation_dictionary(dictionary_text: str) -> list[tuple[str, str]]:
     entries: list[tuple[str, str]] = []
     for raw_line in dictionary_text.splitlines():
@@ -403,6 +409,77 @@ def should_accept_rewrite(
         if term and term.lower() not in rewritten_lower:
             return False, "rewrite_dropped_dictionary_term"
     return True, None
+
+
+class DictationRewriteProvider:
+    backend = "disabled"
+
+    def rewrite(
+        self,
+        text: str,
+        max_expansion_ratio: float,
+        protected_terms: list[str],
+    ) -> DictationRewriteResult:
+        return DictationRewriteResult(text=text, backend=self.backend, applied=False)
+
+
+class RulesRewriteProvider(DictationRewriteProvider):
+    backend = "rules"
+
+    def rewrite(
+        self,
+        text: str,
+        max_expansion_ratio: float,
+        protected_terms: list[str],
+    ) -> DictationRewriteResult:
+        candidate = apply_dictation_rules_rewrite(text)
+        accepted, fallback_reason = should_accept_rewrite(
+            text,
+            candidate,
+            max_expansion_ratio,
+            protected_terms,
+        )
+        if not accepted:
+            return DictationRewriteResult(
+                text=text,
+                backend=self.backend,
+                applied=False,
+                fallback_reason=fallback_reason,
+            )
+        return DictationRewriteResult(
+            text=candidate,
+            backend=self.backend,
+            applied=candidate != text,
+        )
+
+
+class UnavailableRewriteProvider(DictationRewriteProvider):
+    def __init__(self, backend: str, fallback_reason: str) -> None:
+        self.backend = backend
+        self.fallback_reason = fallback_reason
+
+    def rewrite(
+        self,
+        text: str,
+        max_expansion_ratio: float,
+        protected_terms: list[str],
+    ) -> DictationRewriteResult:
+        return DictationRewriteResult(
+            text=text,
+            backend=self.backend,
+            applied=False,
+            fallback_reason=self.fallback_reason,
+        )
+
+
+def get_dictation_rewrite_provider(rewrite_mode: str) -> DictationRewriteProvider | None:
+    if rewrite_mode == "rules":
+        return RulesRewriteProvider()
+    if rewrite_mode == "rules-and-cloud":
+        return UnavailableRewriteProvider("cloud-llm", "cloud_rewrite_unavailable")
+    if rewrite_mode == "rules-and-local-llm":
+        return UnavailableRewriteProvider("local-llm", "local_llm_rewrite_unavailable")
+    return None
 
 
 @dataclass
