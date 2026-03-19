@@ -45,6 +45,7 @@ function OverlayView({
   const userScrolledUp = useRef(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; winX: number; winY: number } | null>(null);
+  const suppressOrbClickRef = useRef(false);
   const dictationPrompt = getDictationPrompt(dictationState, showDictationResult);
   const effectiveDictationPrompt = overlayMode === 'dictation'
     ? dictationPrompt ?? {
@@ -90,6 +91,9 @@ function OverlayView({
       if (!drag) return;
       const dx = e.screenX - drag.startX;
       const dy = e.screenY - drag.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        suppressOrbClickRef.current = true;
+      }
       window.app.setOverlayPosition(drag.winX + dx, drag.winY + dy);
     }
     function onMouseUp() {
@@ -115,8 +119,30 @@ function OverlayView({
   if (isDictationOverlayMode && effectiveDictationPrompt) {
     return (
       <main className="overlay-window overlay-window-dictation" style={overlayStyle}>
-        <section className={`dictation-float-shell dictation-float-shell-${effectiveDictationPrompt.tone}`}>
-          <button className={`dictation-float-orb dictation-float-${effectiveDictationPrompt.tone} no-drag`} onClick={closeOverlayAndFocusSettings} aria-label={effectiveDictationPrompt.title}>
+        <section
+          className={`dictation-float-shell dictation-float-shell-${effectiveDictationPrompt.tone}`}
+          onMouseDown={async (e) => {
+            if (!(e.target as HTMLElement).closest('.dictation-float-orb')) {
+              return;
+            }
+            const [winX, winY] = await window.app.getOverlayPosition();
+            suppressOrbClickRef.current = false;
+            dragRef.current = { startX: e.screenX, startY: e.screenY, winX, winY };
+          }}
+        >
+          <button
+            className={`dictation-float-orb dictation-float-${effectiveDictationPrompt.tone}`}
+            onClick={(e) => {
+              if (suppressOrbClickRef.current) {
+                suppressOrbClickRef.current = false;
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
+              void closeOverlayAndFocusSettings();
+            }}
+            aria-label={effectiveDictationPrompt.title}
+          >
             <span className="dictation-float-wave dictation-float-wave-a" />
             <span className="dictation-float-wave dictation-float-wave-b" />
             <span className="dictation-float-bars" aria-hidden="true">

@@ -35,6 +35,7 @@ let pendingDictationPasteTarget: { appName: string; windowTitle: string | null }
 let dictationOverlayHideTimeout: NodeJS.Timeout | null = null;
 let overlayMode: 'hidden' | 'subtitle' | 'dictation' = 'hidden';
 let subtitleOverlayBoundsCache: OverlayBounds | null = null;
+let dictationOverlayBoundsCache: OverlayBounds | null = null;
 let tray: Tray | null = null;
 
 const DEFAULT_SUBTITLE_OVERLAY_WIDTH = 900;
@@ -148,6 +149,23 @@ function getSubtitleOverlayBounds() {
     return subtitleOverlayBoundsCache;
   }
   return getDefaultSubtitleOverlayBounds();
+}
+
+function getDefaultDictationOverlayBounds() {
+  const primary = screen.getPrimaryDisplay();
+  const workArea = primary.workArea;
+  const x = Math.round(workArea.x + (workArea.width - DICTATION_OVERLAY_SIZE) / 2);
+  const y = Math.round(workArea.y + workArea.height - DICTATION_OVERLAY_SIZE - 128);
+  return {
+    x,
+    y,
+    width: DICTATION_OVERLAY_SIZE,
+    height: DICTATION_OVERLAY_SIZE,
+  } satisfies OverlayBounds;
+}
+
+function getDictationOverlayBounds() {
+  return dictationOverlayBoundsCache ?? getDefaultDictationOverlayBounds();
 }
 
 function restoreSubtitleOverlayBounds() {
@@ -444,12 +462,7 @@ function showDictationOverlay() {
     if (isSubtitleSizedBounds(currentBounds)) {
       subtitleOverlayBoundsCache = currentBounds;
     }
-    const current = overlayWindow.getBounds();
-    const width = DICTATION_OVERLAY_SIZE;
-    const height = DICTATION_OVERLAY_SIZE;
-    const x = Math.round(current.x + (current.width - width) / 2);
-    const y = Math.round(current.y + current.height - height);
-    overlayWindow.setBounds({ x, y, width, height });
+    overlayWindow.setBounds(getDictationOverlayBounds());
   }
   overlayWindow?.showInactive();
 }
@@ -602,10 +615,11 @@ function persistOverlayBounds() {
   if (!overlayWindow) {
     return;
   }
+  const bounds = overlayWindow.getBounds();
   if (overlayMode === 'dictation') {
+    dictationOverlayBoundsCache = bounds;
     return;
   }
-  const bounds = overlayWindow.getBounds();
   saveSettings({
     overlayX: bounds.x,
     overlayY: bounds.y,
