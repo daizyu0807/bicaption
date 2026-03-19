@@ -187,6 +187,8 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertIn("Do not add facts", prompt)
         self.assertIn("Do not expand fragments into complete ideas", prompt)
         self.assertIn("Preserve protected terms exactly", prompt)
+        self.assertIn("Fix obvious speech-recognition mistakes", prompt)
+        self.assertIn("Prefer the most natural and fluent wording", prompt)
         self.assertIn("ChatGPT", prompt)
         self.assertIn("BiCaption", prompt)
 
