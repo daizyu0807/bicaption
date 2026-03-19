@@ -51,6 +51,8 @@ function traceMain(message: string) {
   }
 }
 
+traceMain(`module_loaded pid=${process.pid} packaged=${String(app.isPackaged)} cwd=${process.cwd()}`);
+
 function getTrayIconPath() {
   if (isPackaged) {
     return join(process.resourcesPath, 'icon.icns');
@@ -578,6 +580,7 @@ function persistOverlayBounds() {
 }
 
 function bindBridge() {
+  traceMain('bindBridge called');
   bridge.on('partial_caption', (event: SidecarEvent) => {
     if (event.type === 'partial_caption' && event.mode === 'subtitle') {
       setOverlayVisible(true);
@@ -760,6 +763,7 @@ async function openInputMonitoringSettings() {
 }
 
 app.whenReady().then(() => {
+  traceMain('app.whenReady entered');
   createSettingsWindow();
   createOverlayWindow();
   createTray();
