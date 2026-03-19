@@ -470,7 +470,6 @@ function SettingsView({
   const [draft, setDraft] = useState(settings);
   const [subtitleAdvancedOpen, setSubtitleAdvancedOpen] = useState(false);
   const [dictationAdvancedOpen, setDictationAdvancedOpen] = useState(false);
-  const [dictationDiagnosticsOpen, setDictationDiagnosticsOpen] = useState(false);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
   const [overlaySuppressedLocal, setOverlaySuppressedLocal] = useState(false);
@@ -485,13 +484,6 @@ function SettingsView({
   const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
   const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
   const localLlmEnabled = draft.dictationRewriteMode === 'rules-and-local-llm';
-  const dictationDiagnosticsAvailable = Boolean(
-    dictationViewState.literalTranscript
-    || dictationViewState.dictionaryText
-    || dictationViewState.finalText
-    || dictationViewState.fallbackReason
-    || dictationViewState.outputStatus,
-  );
   const modelReadyMap: Record<string, boolean> = {
     sensevoice: localModelStatus?.sensevoice ?? false,
     'apple-stt': true,  // No model download needed — uses macOS built-in
@@ -906,85 +898,6 @@ function SettingsView({
                   {draft.dictationSttModel === 'apple-stt' && (
                     <p className="model-hint">SFSpeechRecognizer 不會做多語自動判斷。若你要中英混講或自動偵測，改用 SenseVoice。</p>
                   )}
-                  {localLlmEnabled && (
-                    <>
-                      <label>
-                        本地模型 ID / 路徑
-                        <input
-                          type="text"
-                          value={draft.dictationLocalLlmModel}
-                          onChange={(event) => setDraft({ ...draft, dictationLocalLlmModel: event.target.value })}
-                          placeholder="mlx-community/Qwen2.5-0.5B-Instruct-4bit"
-                        />
-                      </label>
-                      <label>
-                        自訂 runner（可選）
-                        <input
-                          type="text"
-                          value={draft.dictationLocalLlmRunner}
-                          onChange={(event) => setDraft({ ...draft, dictationLocalLlmRunner: event.target.value })}
-                          placeholder="python3 /path/to/your-runner.py"
-                        />
-                      </label>
-                    </>
-                  )}
-                </div>
-              )}
-            </article>
-
-            <article className="dictation-section dictation-section-collapsible">
-              <button
-                className="dictation-collapse-toggle"
-                type="button"
-                onClick={() => setDictationDiagnosticsOpen((open) => !open)}
-              >
-                <span>
-                  <span className="dictation-section-kicker">診斷</span>
-                  <strong>最近一次輸入結果</strong>
-                </span>
-                <span>{dictationDiagnosticsOpen ? '收合' : '展開'}</span>
-              </button>
-              {dictationDiagnosticsOpen && (
-                <div className="dictation-collapsible-body">
-                  <div className="dictation-summary-grid">
-                    <div className="hotkey-event-box">
-                      <span className="hotkey-event-label">本次潤稿 backend</span>
-                      <span className="hotkey-event-value">{getRewriteBackendLabel(dictationViewState.rewriteBackend)}</span>
-                    </div>
-                    <div className="hotkey-event-box">
-                      <span className="hotkey-event-label">延遲</span>
-                      <span className="hotkey-event-value">{dictationViewState.finalLatencyMs ? `${dictationViewState.finalLatencyMs}ms` : '—'}</span>
-                    </div>
-                  </div>
-                  {dictationDiagnosticsAvailable ? (
-                    <div className="dictation-diagnostics-grid">
-                      <label>
-                        Literal transcript
-                        <textarea rows={3} value={dictationViewState.literalTranscript} readOnly />
-                      </label>
-                      <label>
-                        Dictionary text
-                        <textarea rows={3} value={dictationViewState.dictionaryText} readOnly />
-                      </label>
-                      <label className="dictation-diagnostics-final">
-                        Final text
-                        <textarea rows={4} value={dictationViewState.finalText} readOnly />
-                      </label>
-                    </div>
-                  ) : (
-                    <p className="model-hint">還沒有可供診斷的輸入結果。完成一次語音輸入後，這裡會顯示 literal、dictionary 與 final text 的差異。</p>
-                  )}
-                  {getRewriteFallbackLabel(dictationViewState.fallbackReason) && (
-                    <p className="model-hint">{getRewriteFallbackLabel(dictationViewState.fallbackReason)}</p>
-                  )}
-                  {dictationViewState.outputStatus && (
-                    <p className="model-hint">
-                      輸出狀態：
-                      {dictationViewState.outputStatus === 'copied' && '已複製到剪貼簿。'}
-                      {dictationViewState.outputStatus === 'pasted' && '已貼到目前視窗。'}
-                      {dictationViewState.outputStatus === 'fallback' && (dictationViewState.outputDetail ?? '貼上失敗，已保留剪貼簿內容。')}
-                    </p>
-                  )}
                 </div>
               )}
             </article>
@@ -1069,17 +982,26 @@ function SettingsView({
               <div className="dictation-section-header">
                 <h3 className="dictation-section-title">顯示</h3>
               </div>
-              <button className={overlaySuppressedLocal ? 'secondary' : ''} onClick={() => {
-                if (overlaySuppressedLocal) {
-                  window.app.showOverlay();
-                  setOverlaySuppressedLocal(false);
-                } else {
-                  window.app.hideOverlay();
-                  setOverlaySuppressedLocal(true);
-                }
-              }}>
-                {overlaySuppressedLocal ? '顯示字幕' : '隱藏字幕'}
-              </button>
+              <label className="toggle-row dictation-feature-toggle">
+                <input
+                  type="checkbox"
+                  checked={!overlaySuppressedLocal}
+                  onChange={(event) => {
+                    const shouldShow = event.target.checked;
+                    if (shouldShow) {
+                      window.app.showOverlay();
+                      setOverlaySuppressedLocal(false);
+                    } else {
+                      window.app.hideOverlay();
+                      setOverlaySuppressedLocal(true);
+                    }
+                  }}
+                />
+                <span>
+                  顯示字幕
+                  <small>關閉後只停止顯示字幕視窗，不會變更目前的字幕設定。</small>
+                </span>
+              </label>
               <div className="dictation-inline-grid">
                 <label>
                   透明度
