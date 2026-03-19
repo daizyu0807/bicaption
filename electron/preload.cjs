@@ -9,7 +9,6 @@ function on(channel, handler) {
 contextBridge.exposeInMainWorld('app', {
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (partial) => ipcRenderer.invoke('settings:save', partial),
-  fitSettingsWindow: (height) => ipcRenderer.invoke('settings:fit-window', height),
   startSession: (config) => ipcRenderer.invoke('session:start', config),
   stopSession: () => ipcRenderer.invoke('session:stop'),
   listDevices: () => ipcRenderer.invoke('session:devices'),

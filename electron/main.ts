@@ -430,10 +430,10 @@ function hideDictationOverlaySoon(delayMs = 1800) {
 
 function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
-    width: 468,
-    height: 780,
-    minWidth: 440,
-    minHeight: 600,
+    width: 1120,
+    height: 760,
+    minWidth: 980,
+    minHeight: 700,
     title: 'BiCaption',
     webPreferences: {
       preload: preloadPath,
@@ -452,23 +452,6 @@ function createSettingsWindow() {
   if (isDev && process.env.OPEN_DEVTOOLS === '1') {
     settingsWindow.webContents.openDevTools({ mode: 'detach' });
   }
-}
-
-function fitSettingsWindowToContent(contentHeight: number) {
-  if (!settingsWindow || settingsWindow.isDestroyed()) {
-    return;
-  }
-  const display = screen.getDisplayMatching(settingsWindow.getBounds());
-  const workAreaHeight = display.workArea.height;
-  const minContentHeight = 520;
-  const maxContentHeight = Math.max(minContentHeight, workAreaHeight - 80);
-  const nextContentHeight = Math.max(minContentHeight, Math.min(Math.ceil(contentHeight), maxContentHeight));
-  const [currentWidth] = settingsWindow.getContentSize();
-  const [, currentHeight] = settingsWindow.getContentSize();
-  if (Math.abs(currentHeight - nextContentHeight) < 2) {
-    return;
-  }
-  settingsWindow.setContentSize(currentWidth, nextContentHeight);
 }
 
 function showSettingsWindow() {
@@ -795,10 +778,6 @@ app.whenReady().then(() => {
     sendToWindows('settings:changed', settings);
     rebuildTrayMenu();
     return settings;
-  });
-  ipcMain.handle('settings:fit-window', (_event, height: number) => {
-    fitSettingsWindowToContent(height);
-    return { ok: true };
   });
   ipcMain.handle('permissions:check-accessibility', () => checkAccessibilityPermission());
   ipcMain.handle('permissions:check-input-monitoring', () => checkInputMonitoringPermission());

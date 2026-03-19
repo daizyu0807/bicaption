@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { startTransition, useEffect, useRef, useState } from 'react';
 import type {
   AppSettings,
   CaptionConfig,
@@ -466,7 +466,6 @@ function SettingsView({
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
-  const shellRef = useRef<HTMLElement | null>(null);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation'>('subtitle');
   const [draft, setDraft] = useState(settings);
   const [subtitleAdvancedOpen, setSubtitleAdvancedOpen] = useState(false);
@@ -595,61 +594,15 @@ function SettingsView({
 
   const modifierOnlyHotkey = isModifierOnlyHotkey(hotkeyBinding);
 
-  useLayoutEffect(() => {
-    const shell = shellRef.current;
-    if (!shell) {
-      return;
-    }
-
-    let rafId = 0;
-    const reportHeight = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const documentHeight = Math.max(
-          shell.scrollHeight,
-          Math.ceil(shell.getBoundingClientRect().height),
-          document.documentElement.scrollHeight,
-          document.body.scrollHeight,
-        );
-        void window.app.fitSettingsWindow(documentHeight);
-      });
-    };
-
-    reportHeight();
-
-    const resizeObserver = new ResizeObserver(() => {
-      reportHeight();
-    });
-    resizeObserver.observe(shell);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      resizeObserver.disconnect();
-    };
-  }, [
-    activeSettingsTab,
-    subtitleAdvancedOpen,
-    dictationAdvancedOpen,
-    dictationDiagnosticsOpen,
-    draft.saveEnabled,
-    draft.dictationOutputAction,
-    localLlmEnabled,
-    inputMonitoringPermission?.trusted,
-  ]);
-
-
   return (
-    <main className="settings-shell" ref={shellRef}>
-      <header className="topbar">
-        <div className="topbar-left">
-          <h1 className="topbar-title">即時雙語字幕</h1>
-          <span className="topbar-summary">{getSessionSummary(viewState, draft)}</span>
+    <main className="settings-shell">
+      <aside className="settings-sidebar">
+        <div className="settings-sidebar-head">
+          <p className="settings-sidebar-eyebrow">BiCaption</p>
+          <h1 className="settings-sidebar-title">Settings</h1>
+          <p className="settings-sidebar-summary">{getSessionSummary(viewState, draft)}</p>
         </div>
-        <div className="topbar-right" />
-      </header>
-
-      <section className={`settings-grid settings-grid-${activeSettingsTab}`}>
-        <div className="settings-tabbar">
+        <div className="settings-tabbar settings-tabbar-sidebar">
           <button
             className={activeSettingsTab === 'subtitle' ? 'settings-tab active' : 'settings-tab'}
             onClick={() => setActiveSettingsTab('subtitle')}
@@ -663,7 +616,18 @@ function SettingsView({
             語音輸入
           </button>
         </div>
-        {activeSettingsTab === 'subtitle' && shouldShowModelPanel && (
+      </aside>
+
+      <section className="settings-main">
+        <header className="settings-main-header">
+          <div>
+            <p className="settings-main-eyebrow">Preferences</p>
+            <h2 className="settings-main-title">{activeSettingsTab === 'subtitle' ? '雙語字幕' : '語音輸入'}</h2>
+          </div>
+        </header>
+
+        <div className={`settings-scroll settings-grid settings-grid-${activeSettingsTab}`}>
+          {activeSettingsTab === 'subtitle' && shouldShowModelPanel && (
         <article className="panel model-panel panel-span-full">
           <h2>Models</h2>
           <div className="model-status-row">
@@ -1184,9 +1148,8 @@ function SettingsView({
           </div>
         </div>
         )}
-      </section>
-
-      <footer className="bottom-bar">
+        </div>
+        <footer className="bottom-bar">
         {activeSettingsTab === 'subtitle' ? (
           <>
             <button
@@ -1225,7 +1188,8 @@ function SettingsView({
             </button>
           </>
         )}
-      </footer>
+        </footer>
+      </section>
     </main>
   );
 }
