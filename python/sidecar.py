@@ -101,6 +101,8 @@ def build_dictation_final_event(
     convert_s2t: bool = False,
     opencc_s2t: OpenCC | None = None,
     rewrite_mode: str = "disabled",
+    source_lang: str = "auto",
+    output_style: str = "polished",
     dictionary_enabled: bool = False,
     dictionary_text: str = "",
     max_rewrite_expansion_ratio: float = 1.3,
@@ -117,7 +119,10 @@ def build_dictation_final_event(
     protected_terms = [canonical for _, canonical in dictionary_entries]
     if rewrite_mode != "disabled":
         rules_result = RulesRewriteProvider().rewrite(
+            transcript,
             dictionary_result,
+            source_lang,
+            output_style,
             max_rewrite_expansion_ratio,
             protected_terms,
         )
@@ -129,7 +134,10 @@ def build_dictation_final_event(
         provider = get_dictation_rewrite_provider(rewrite_mode)
         if provider is not None and provider.backend != "rules":
             provider_result = provider.rewrite(
+                transcript,
                 final_text,
+                source_lang,
+                output_style,
                 max_rewrite_expansion_ratio,
                 protected_terms,
             )
@@ -411,12 +419,55 @@ def should_accept_rewrite(
     return True, None
 
 
+def build_local_llm_rewrite_prompt(
+    literal_transcript: str,
+    dictionary_text: str,
+    source_lang: str,
+    output_style: str,
+    protected_terms: list[str],
+) -> str:
+    language_label = {
+        "zh": "Traditional Chinese",
+        "zh-tw": "Traditional Chinese",
+        "zh-hant": "Traditional Chinese",
+        "en": "English",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "auto": "match input language",
+        "": "match input language",
+    }.get(source_lang.lower(), source_lang or "match input language")
+    style_label = "polished written text" if output_style == "polished" else "literal transcript"
+    protected_block = "\n".join(f"- {term}" for term in protected_terms) if protected_terms else "- None"
+    return (
+        "You are a deterministic dictation cleanup engine.\n"
+        "Rewrite the text for direct insertion into another app.\n"
+        f"Target language: {language_label}.\n"
+        f"Output style: {style_label}.\n"
+        "Strict rules:\n"
+        "1. Keep the original meaning exactly.\n"
+        "2. Do not add facts, explanations, or missing context.\n"
+        "3. Do not expand fragments into complete ideas.\n"
+        "4. Preserve protected terms exactly.\n"
+        "5. Only fix punctuation, spacing, fillers, and obvious spoken-form phrasing.\n"
+        "6. Return only the rewritten text.\n"
+        "Protected terms:\n"
+        f"{protected_block}\n"
+        "Literal transcript:\n"
+        f"{literal_transcript}\n"
+        "Dictionary-corrected text:\n"
+        f"{dictionary_text}"
+    )
+
+
 class DictationRewriteProvider:
     backend = "disabled"
 
     def rewrite(
         self,
+        literal_transcript: str,
         text: str,
+        source_lang: str,
+        output_style: str,
         max_expansion_ratio: float,
         protected_terms: list[str],
     ) -> DictationRewriteResult:
@@ -428,7 +479,10 @@ class RulesRewriteProvider(DictationRewriteProvider):
 
     def rewrite(
         self,
+        literal_transcript: str,
         text: str,
+        source_lang: str,
+        output_style: str,
         max_expansion_ratio: float,
         protected_terms: list[str],
     ) -> DictationRewriteResult:
@@ -460,7 +514,10 @@ class UnavailableRewriteProvider(DictationRewriteProvider):
 
     def rewrite(
         self,
+        literal_transcript: str,
         text: str,
+        source_lang: str,
+        output_style: str,
         max_expansion_ratio: float,
         protected_terms: list[str],
     ) -> DictationRewriteResult:
@@ -1469,6 +1526,8 @@ class SidecarApp:
                     convert_s2t=self.config.target_lang.lower() in {"zh-tw", "zh-hant"},
                     opencc_s2t=self.opencc_s2t,
                     rewrite_mode=self.config.dictation_rewrite_mode,
+                    source_lang=self.config.source_lang,
+                    output_style=self.config.dictation_output_style,
                     dictionary_enabled=self.config.dictation_dictionary_enabled,
                     dictionary_text=self.config.dictation_dictionary_text,
                     max_rewrite_expansion_ratio=self.config.dictation_max_rewrite_expansion_ratio,

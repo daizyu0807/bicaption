@@ -830,13 +830,12 @@ function SettingsView({
                 setDraft({
                   ...draft,
                   dictationRewriteMode: mode,
-                  dictationCloudEnhancementEnabled: mode === 'rules-and-cloud',
+                  dictationCloudEnhancementEnabled: false,
                 });
               }}
             >
               <option value="disabled">關閉</option>
               <option value="rules">規則整理</option>
-              <option value="rules-and-cloud">規則 + 雲端增強</option>
               <option value="rules-and-local-llm">規則 + 本地 LLM</option>
             </select>
           </label>
@@ -874,11 +873,8 @@ function SettingsView({
               自動貼上需要 Accessibility 權限。若貼上失敗，文字仍會保留在剪貼簿。
             </p>
           )}
-          {draft.dictationRewriteMode === 'rules-and-cloud' && (
-            <p className="model-hint">雲端增強尚未接入實際 provider，目前會回退到規則整理。</p>
-          )}
           {draft.dictationRewriteMode === 'rules-and-local-llm' && (
-            <p className="model-hint">本地 LLM 尚未接入實際 provider，目前會回退到規則整理。</p>
+            <p className="model-hint">本地 LLM 會先吃 dictionary 校正結果，再依保守 prompt 做書面化；prompt contract 已對齊 SayIt 的「口語轉可直接貼上文字」方向。</p>
           )}
           <p className="model-hint">按住快捷鍵開始語音輸入，放開後結束並輸出文字。</p>
         </article>

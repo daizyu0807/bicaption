@@ -39,6 +39,7 @@ for module_name, attrs in {
 from sidecar import (
     apply_dictation_dictionary,
     apply_dictation_rules_rewrite,
+    build_local_llm_rewrite_prompt,
     FallbackTranslator,
     build_dictation_final_event,
     build_dictation_state_event,
@@ -160,6 +161,21 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertEqual(event["finalText"], "hello world")
         self.assertEqual(event["rewriteBackend"], "local-llm")
         self.assertEqual(event["fallbackReason"], "local_llm_rewrite_unavailable")
+
+    def test_local_llm_prompt_preserves_sayit_style_constraints(self) -> None:
+        prompt = build_local_llm_rewrite_prompt(
+            literal_transcript="um chat g p t works",
+            dictionary_text="ChatGPT works",
+            source_lang="zh",
+            output_style="polished",
+            protected_terms=["ChatGPT", "BiCaption"],
+        )
+        self.assertIn("deterministic dictation cleanup engine", prompt)
+        self.assertIn("Do not add facts", prompt)
+        self.assertIn("Do not expand fragments into complete ideas", prompt)
+        self.assertIn("Preserve protected terms exactly", prompt)
+        self.assertIn("ChatGPT", prompt)
+        self.assertIn("BiCaption", prompt)
 
 
 if __name__ == "__main__":
