@@ -302,11 +302,6 @@ button:disabled {
   overflow: visible;
 }
 
-.subtitle-workspace .dictation-feature-toggle {
-  background: #f4f6fa;
-  border-color: rgba(31, 35, 40, 0.08);
-}
-
 .dictation-section {
   display: grid;
   gap: 12px;
@@ -352,7 +347,7 @@ button:disabled {
   gap: 12px;
 }
 
-.dictation-feature-toggle {
+.settings-toggle-block {
   align-items: start;
   padding: 10px 12px;
   border-radius: 12px;
@@ -360,15 +355,19 @@ button:disabled {
   border: 1px solid rgba(31, 35, 40, 0.08);
 }
 
-.dictation-feature-toggle span {
+.settings-toggle-block span {
   display: grid;
   gap: 3px;
 }
 
-.dictation-feature-toggle small {
+.settings-toggle-block small {
   color: rgba(31, 35, 40, 0.52);
   line-height: 1.45;
   font-weight: 500;
+}
+
+.settings-toggle-compact span {
+  gap: 0;
 }
 
 .dictation-permission-card {
@@ -423,10 +422,11 @@ button:disabled {
 }
 
 .toggle-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
-  font-size: 0.74rem;
+  gap: 8px;
+  font-size: 0.78rem;
   font-weight: 600;
 }
 

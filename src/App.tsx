@@ -470,7 +470,6 @@ function SettingsView({
   const [draft, setDraft] = useState(settings);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
-  const [overlaySuppressedLocal, setOverlaySuppressedLocal] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [localModelStatus, setLocalModelStatus] = useState(modelStatus);
@@ -817,7 +816,7 @@ function SettingsView({
                   <option value="polished">潤飾後</option>
                 </select>
               </label>
-              <label className="toggle-row dictation-feature-toggle">
+              <label className="toggle-row settings-toggle-block">
                 <input
                   type="checkbox"
                   checked={localLlmEnabled}
@@ -832,13 +831,13 @@ function SettingsView({
                   <small>會先套字典與規則，再交給本地模型做保守書面化。</small>
                 </span>
               </label>
-              <label className="toggle-row">
+              <label className="toggle-row settings-toggle-block settings-toggle-compact">
                 <input
                   type="checkbox"
                   checked={draft.dictationDictionaryEnabled}
                   onChange={(event) => setDraft({ ...draft, dictationDictionaryEnabled: event.target.checked })}
                 />
-                啟用自訂字典
+                <span>啟用自訂字典</span>
               </label>
               <label>
                 自訂字典
@@ -947,7 +946,7 @@ function SettingsView({
                   </select>
                 </label>
               </div>
-              <label className="toggle-row dictation-feature-toggle">
+              <label className="toggle-row settings-toggle-block">
                 <input
                   type="checkbox"
                   checked={translationOn}
@@ -968,26 +967,6 @@ function SettingsView({
               <div className="dictation-section-header">
                 <h3 className="dictation-section-title">顯示</h3>
               </div>
-              <label className="toggle-row dictation-feature-toggle">
-                <input
-                  type="checkbox"
-                  checked={!overlaySuppressedLocal}
-                  onChange={(event) => {
-                    const shouldShow = event.target.checked;
-                    if (shouldShow) {
-                      window.app.showOverlay();
-                      setOverlaySuppressedLocal(false);
-                    } else {
-                      window.app.hideOverlay();
-                      setOverlaySuppressedLocal(true);
-                    }
-                  }}
-                />
-                <span>
-                  顯示字幕
-                  <small>關閉後只停止顯示字幕視窗，不會變更目前的字幕設定。</small>
-                </span>
-              </label>
               <div className="dictation-inline-grid">
                 <label>
                   透明度
