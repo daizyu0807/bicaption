@@ -51,9 +51,9 @@ function OverlayView({
   const dictationPrompt = getDictationPrompt(dictationState, showDictationResult);
   const effectiveDictationPrompt = overlayMode === 'dictation'
     ? dictationPrompt ?? {
-      tone: 'processing' as const,
-      title: '正在整理語音',
-      detail: '放開後會先整理語音，再輸出結果。',
+      tone: 'live' as const,
+      title: '正在聽你說',
+      detail: '按住快捷鍵說話，放開後送出辨識。',
     }
     : dictationPrompt;
   const isDictationOverlayMode = overlayMode === 'dictation';
@@ -362,14 +362,14 @@ function getDictationPrompt(
       detail: '按住快捷鍵繼續說話，放開後送出辨識。',
     };
   }
-  if (state.dictationState === 'capturing') {
+  if (state.dictationState === 'capturing' || (state.activeSessionId && state.sessionState === 'connecting')) {
     return {
       tone: 'live',
       title: '正在聽你說',
       detail: '持續收音中，放開後才會開始整理。',
     };
   }
-  if (state.dictationState === 'processing' || state.sessionState === 'connecting') {
+  if (state.dictationState === 'processing' || (state.activeSessionId && state.sessionState === 'stopped' && !state.finalText)) {
     return {
       tone: 'processing',
       title: '正在整理語音',
