@@ -605,7 +605,13 @@ function SettingsView({
     const reportHeight = () => {
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        void window.app.fitSettingsWindow(Math.ceil(shell.scrollHeight));
+        const documentHeight = Math.max(
+          shell.scrollHeight,
+          Math.ceil(shell.getBoundingClientRect().height),
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight,
+        );
+        void window.app.fitSettingsWindow(documentHeight);
       });
     };
 

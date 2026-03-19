@@ -50,13 +50,12 @@ textarea {
 /* ── Settings page ── */
 
 .settings-shell {
-  height: 100vh;
+  min-height: 100vh;
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow: hidden;
-  min-height: 0;
+  overflow: visible;
 }
 
 .topbar {
@@ -100,12 +99,12 @@ textarea {
 }
 
 .settings-grid {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 0;
-  overflow: hidden;
+  min-height: auto;
+  overflow: visible;
 }
 
 .settings-tabbar {
