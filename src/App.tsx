@@ -653,23 +653,12 @@ function SettingsView({
 
         {activeSettingsTab === 'dictation' && (
         <div className="dictation-workspace settings-content-grid">
-          <article className="dictation-hero">
-            <p className="dictation-kicker">Voice Dictation</p>
-            <p className="dictation-hero-text">按住快捷鍵說話，放開後直接輸出文字。規則整理固定啟用，本地 LLM 只在需要時介入。</p>
-            <div className="dictation-hero-notes">
-              <p><strong>快捷鍵</strong>{getDictationHotkeyLabel(hotkeyBinding)}</p>
-              <p><strong>輸出</strong>{draft.dictationOutputStyle === 'polished' ? '潤飾後文字' : '原文逐字稿'}</p>
-              <p><strong>整理</strong>{localLlmEnabled ? '規則 + 本地 LLM' : '規則整理'}</p>
-            </div>
-          </article>
-
           <div className="dictation-flow-grid">
             <article className="dictation-section dictation-section-primary">
               <div className="dictation-section-header">
                 <div>
                   <p className="dictation-section-kicker">啟動</p>
                   <h3 className="dictation-section-title">決定怎麼開始說話</h3>
-                  <p className="dictation-section-copy">先把裝置、快捷鍵和權限調好，這是每天都會碰到的設定。</p>
                 </div>
               </div>
               <div className="dictation-inline-grid">
@@ -750,7 +739,6 @@ function SettingsView({
                   </label>
                 </div>
               </label>
-              {modifierOnlyHotkey && <p className="model-hint">Modifier-only 模式會直接把所選按鍵當成 press-to-talk。</p>}
               <div className="dictation-permission-card">
                 <div className="dictation-permission-row">
                   <span className="dictation-permission-copy">Accessibility</span>
@@ -795,7 +783,6 @@ function SettingsView({
                 <div>
                   <p className="dictation-section-kicker">輸出</p>
                   <h3 className="dictation-section-title">決定文字最後長什麼樣</h3>
-                  <p className="dictation-section-copy">把這裡想成輸出策略，不是工程參數。規則整理會永遠在，LLM 是額外加成。</p>
                 </div>
               </div>
               <div className="dictation-inline-grid">
@@ -864,7 +851,7 @@ function SettingsView({
               <label>
                 自訂字典
                 <textarea
-                  rows={5}
+                  rows={3}
                   value={draft.dictationDictionaryText}
                   onChange={(event) => setDraft({ ...draft, dictationDictionaryText: event.target.value })}
                   placeholder={'spoken => canonical\nchat g p t => ChatGPT\nbicaption => BiCaption'}
@@ -919,7 +906,6 @@ function SettingsView({
                   )}
                   {localLlmEnabled && (
                     <>
-                      <p className="model-hint">本地 LLM 與語音辨識細節屬於低頻設定，通常只在首次調整效果或除錯時才需要更動。</p>
                       <label>
                         本地模型 ID / 路徑
                         <input
@@ -938,7 +924,6 @@ function SettingsView({
                           placeholder="python3 /path/to/your-runner.py"
                         />
                       </label>
-                      <p className="model-hint">本地 LLM 會先吃 dictionary 校正結果，再依保守 prompt 做書面化；prompt contract 已對齊 SayIt 的方向。</p>
                     </>
                   )}
                 </div>
@@ -1007,23 +992,12 @@ function SettingsView({
 
         {activeSettingsTab === 'subtitle' && (
         <div className="subtitle-workspace settings-content-grid">
-          <article className="dictation-hero subtitle-hero">
-            <p className="dictation-kicker">Live Subtitles</p>
-            <p className="dictation-hero-text">字幕模式重點是穩定和低延遲。主畫面只放來源、翻譯與顯示方式，辨識細節收進進階。</p>
-            <div className="dictation-hero-notes">
-              <p><strong>來源語言</strong>{draft.sourceLang === 'auto' ? '自動偵測' : draft.sourceLang}</p>
-              <p><strong>雙語字幕</strong>{translationOn ? '已開啟' : '未開啟'}</p>
-              <p><strong>顯示</strong>{overlaySuppressedLocal ? '目前隱藏' : '目前顯示'}</p>
-            </div>
-          </article>
-
           <div className="dictation-flow-grid">
             <article className="dictation-section dictation-section-primary">
               <div className="dictation-section-header">
                 <div>
                   <p className="dictation-section-kicker">來源</p>
                   <h3 className="dictation-section-title">決定要聽哪裡、翻成什麼</h3>
-                  <p className="dictation-section-copy">把麥克風、系統音訊、來源語言和雙語輸出先定下來，這是字幕頁最常碰的設定。</p>
                 </div>
               </div>
               <label>
@@ -1097,7 +1071,6 @@ function SettingsView({
                 <div>
                   <p className="dictation-section-kicker">顯示</p>
                   <h3 className="dictation-section-title">決定字幕看起來怎麼樣</h3>
-                  <p className="dictation-section-copy">先處理顯示與雙語開關，保存與進階調校放到次層。</p>
                 </div>
               </div>
               <button className={overlaySuppressedLocal ? 'secondary' : ''} onClick={() => {
