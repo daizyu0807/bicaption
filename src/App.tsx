@@ -468,8 +468,6 @@ function SettingsView({
 }) {
   const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation'>('subtitle');
   const [draft, setDraft] = useState(settings);
-  const [subtitleAdvancedOpen, setSubtitleAdvancedOpen] = useState(false);
-  const [dictationAdvancedOpen, setDictationAdvancedOpen] = useState(false);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
   const [overlaySuppressedLocal, setOverlaySuppressedLocal] = useState(false);
@@ -858,47 +856,35 @@ function SettingsView({
           </div>
 
           <div className="dictation-detail-stack">
-            <article className="dictation-section dictation-section-collapsible">
-              <button
-                className="dictation-collapse-toggle"
-                type="button"
-                onClick={() => setDictationAdvancedOpen((open) => !open)}
-              >
-                <span>
-                  <span className="dictation-section-kicker">進階</span>
-                  <strong>模型與辨識細節</strong>
-                </span>
-                <span>{dictationAdvancedOpen ? '收合' : '展開'}</span>
-              </button>
-              {dictationAdvancedOpen && (
-                <div className="dictation-collapsible-body">
-                  <div className="dictation-inline-grid">
-                    <label>
-                      語音辨識引擎
-                      <select
-                        value={draft.dictationSttModel}
-                        onChange={(event) => setDraft({ ...draft, dictationSttModel: event.target.value })}
-                      >
-                        <option value="apple-stt">SFSpeechRecognizer</option>
-                        <option value="sensevoice">SenseVoice</option>
-                      </select>
-                    </label>
-                    <label>
-                      句尾停頓偵測（{draft.dictationEndpointMs}ms）
-                      <input
-                        type="range"
-                        min="600"
-                        max="2000"
-                        step="100"
-                        value={draft.dictationEndpointMs}
-                        onChange={(event) => setDraft({ ...draft, dictationEndpointMs: Number(event.target.value) })}
-                      />
-                    </label>
-                  </div>
-                  {draft.dictationSttModel === 'apple-stt' && (
-                    <p className="model-hint">SFSpeechRecognizer 不會做多語自動判斷。若你要中英混講或自動偵測，改用 SenseVoice。</p>
-                  )}
-                </div>
+            <article className="dictation-section">
+              <div className="dictation-section-header">
+                <h3 className="dictation-section-title">進階</h3>
+              </div>
+              <div className="dictation-inline-grid">
+                <label>
+                  語音辨識引擎
+                  <select
+                    value={draft.dictationSttModel}
+                    onChange={(event) => setDraft({ ...draft, dictationSttModel: event.target.value })}
+                  >
+                    <option value="apple-stt">SFSpeechRecognizer</option>
+                    <option value="sensevoice">SenseVoice</option>
+                  </select>
+                </label>
+                <label>
+                  句尾停頓偵測（{draft.dictationEndpointMs}ms）
+                  <input
+                    type="range"
+                    min="600"
+                    max="2000"
+                    step="100"
+                    value={draft.dictationEndpointMs}
+                    onChange={(event) => setDraft({ ...draft, dictationEndpointMs: Number(event.target.value) })}
+                  />
+                </label>
+              </div>
+              {draft.dictationSttModel === 'apple-stt' && (
+                <p className="model-hint">SFSpeechRecognizer 不會做多語自動判斷。若你要中英混講或自動偵測，改用 SenseVoice。</p>
               )}
             </article>
           </div>
@@ -1016,53 +1002,41 @@ function SettingsView({
           </div>
 
           <div className="dictation-detail-stack">
-            <article className="dictation-section dictation-section-collapsible">
-              <button
-                className="dictation-collapse-toggle"
-                type="button"
-                onClick={() => setSubtitleAdvancedOpen((open) => !open)}
-              >
-                <span>
-                  <span className="dictation-section-kicker">進階</span>
-                  <strong>辨識引擎與翻譯節奏</strong>
-                </span>
-                <span>{subtitleAdvancedOpen ? '收合' : '展開'}</span>
-              </button>
-              {subtitleAdvancedOpen && (
-                <div className="dictation-collapsible-body">
+            <article className="dictation-section">
+              <div className="dictation-section-header">
+                <h3 className="dictation-section-title">進階</h3>
+              </div>
+              <label>
+                語音辨識引擎
+                <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
+                  <option value="apple-stt">SFSpeechRecognizer</option>
+                  <option value="sensevoice">SenseVoice</option>
+                </select>
+              </label>
+              {draft.sttModel === 'apple-stt' && (
+                <>
                   <label>
-                    語音辨識引擎
-                    <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
-                      <option value="apple-stt">SFSpeechRecognizer</option>
-                      <option value="sensevoice">SenseVoice</option>
-                    </select>
+                    翻譯觸發延遲（{draft.partialStableMs}ms）
+                    <input type="range" min="200" max="2000" step="100" value={draft.partialStableMs} onChange={(event) => setDraft({ ...draft, partialStableMs: Number(event.target.value) })} />
                   </label>
-                  {draft.sttModel === 'apple-stt' && (
-                    <>
-                      <label>
-                        翻譯觸發延遲（{draft.partialStableMs}ms）
-                        <input type="range" min="200" max="2000" step="100" value={draft.partialStableMs} onChange={(event) => setDraft({ ...draft, partialStableMs: Number(event.target.value) })} />
-                      </label>
-                      <p className="model-hint">SFSpeechRecognizer 會依照目前的來源語言辨識，不會做多語自動判斷。若你常中英混講，改用 SenseVoice。</p>
-                    </>
-                  )}
-                  <label className="toggle-row">
-                    <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
-                    保存字幕記錄
-                  </label>
-                  {draft.saveEnabled && (
-                    <div className="save-path-row">
-                      <span className="save-path-text">{draft.saveDirectory || '未設定'}</span>
-                      <button className="secondary" onClick={async () => {
-                        const dir = await window.app.chooseSaveDirectory();
-                        if (dir) {
-                          setDraft({ ...draft, saveDirectory: dir });
-                        }
-                      }}>選擇</button>
-                      {draft.saveDirectory && (
-                        <button className="secondary" onClick={() => window.app.openSaveDirectory()}>查看</button>
-                      )}
-                    </div>
+                  <p className="model-hint">SFSpeechRecognizer 會依照目前的來源語言辨識，不會做多語自動判斷。若你常中英混講，改用 SenseVoice。</p>
+                </>
+              )}
+              <label className="toggle-row">
+                <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
+                保存字幕記錄
+              </label>
+              {draft.saveEnabled && (
+                <div className="save-path-row">
+                  <span className="save-path-text">{draft.saveDirectory || '未設定'}</span>
+                  <button className="secondary" onClick={async () => {
+                    const dir = await window.app.chooseSaveDirectory();
+                    if (dir) {
+                      setDraft({ ...draft, saveDirectory: dir });
+                    }
+                  }}>選擇</button>
+                  {draft.saveDirectory && (
+                    <button className="secondary" onClick={() => window.app.openSaveDirectory()}>查看</button>
                   )}
                 </div>
               )}

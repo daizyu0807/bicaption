@@ -405,47 +405,6 @@ button:disabled {
   gap: 12px;
 }
 
-.dictation-section-collapsible {
-  padding: 0;
-  overflow: hidden;
-}
-
-.dictation-collapse-toggle {
-  width: 100%;
-  padding: 12px 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  color: #1f2328;
-}
-
-.dictation-collapse-toggle span {
-  display: grid;
-  gap: 4px;
-  text-align: left;
-}
-
-.dictation-collapse-toggle strong {
-  font-size: 0.84rem;
-  color: #1f2328;
-}
-
-.dictation-collapse-toggle:hover:not(:disabled) {
-  transform: none;
-  background: transparent;
-}
-
-.dictation-collapsible-body {
-  display: grid;
-  gap: 12px;
-  padding: 0 0 4px;
-  border-top: 1px solid rgba(31, 35, 40, 0.08);
-}
-
 .dictation-diagnostics-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1140,12 +1099,6 @@ button:disabled {
 
   .dictation-section {
     padding: 12px;
-  }
-
-  .dictation-collapse-toggle,
-  .dictation-collapsible-body {
-    padding-left: 12px;
-    padding-right: 12px;
   }
 
   .settings-main-title,
