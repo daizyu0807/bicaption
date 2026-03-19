@@ -77,7 +77,11 @@ class TranslationProviderTest(unittest.TestCase):
         event = build_dictation_final_event("session-1", ["  hello", "world  "], 10, 40)
         self.assertEqual(event["type"], "dictation_final")
         self.assertEqual(event["sessionId"], "session-1")
-        self.assertEqual(event["text"], "hello world")
+        self.assertEqual(event["literalTranscript"], "hello world")
+        self.assertEqual(event["dictionaryText"], "hello world")
+        self.assertEqual(event["finalText"], "hello world")
+        self.assertEqual(event["rewriteBackend"], "disabled")
+        self.assertFalse(event["rewriteApplied"])
         self.assertEqual(event["chunkCount"], 2)
         self.assertEqual(event["latencyMs"], 30)
 
@@ -91,7 +95,8 @@ class TranslationProviderTest(unittest.TestCase):
             convert_s2t=True,
             opencc_s2t=converter,
         )
-        self.assertEqual(event["text"], "漢語 输入")
+        self.assertEqual(event["literalTranscript"], "漢語 输入")
+        self.assertEqual(event["finalText"], "漢語 输入")
 
 
 if __name__ == "__main__":

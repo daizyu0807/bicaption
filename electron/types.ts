@@ -78,7 +78,12 @@ export interface DictationStateEvent extends SessionScopedEvent {
 
 export interface DictationFinalEvent extends SessionScopedEvent {
   type: 'dictation_final';
-  text: string;
+  literalTranscript: string;
+  dictionaryText: string;
+  finalText: string;
+  rewriteBackend: 'disabled' | 'rules' | 'cloud-llm' | 'local-llm';
+  rewriteApplied: boolean;
+  fallbackReason?: string;
   chunkCount?: number;
   startedAtMs: number;
   endedAtMs: number;
@@ -134,6 +139,12 @@ export interface AppSettings {
   targetLang: string;
   sttModel: string;
   translateModel: string;
+  subtitleChunkMs: number;
+  subtitlePartialStableMs: number;
+  subtitleVadMode: 'aggressive' | 'balanced';
+  dictationChunkMs: number;
+  dictationEndpointMs: number;
+  dictationVadMode: 'conservative' | 'balanced';
   chunkMs: number;
   partialStableMs: number;
   beamSize: number;
@@ -141,6 +152,11 @@ export interface AppSettings {
   vadFilter: boolean;
   conditionOnPrev: boolean;
   dictationOutputAction: DictationOutputAction;
+  dictationRewriteMode: 'disabled' | 'rules' | 'rules-and-cloud' | 'rules-and-local-llm';
+  dictationDictionaryEnabled: boolean;
+  dictationCloudEnhancementEnabled: boolean;
+  dictationOutputStyle: 'literal' | 'polished';
+  dictationMaxRewriteExpansionRatio: number;
   saveEnabled: boolean;
   saveDirectory: string;
   overlayOpacity: number;

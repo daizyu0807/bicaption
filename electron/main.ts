@@ -111,8 +111,11 @@ function handleDictationFinal(event: SidecarEvent) {
   }
   const settings = loadSettings();
   const outputAction = settings.dictationOutputAction;
-  if (event.text.trim()) {
-    clipboard.writeText(event.text);
+  const outputText = settings.dictationOutputStyle === 'literal'
+    ? event.literalTranscript
+    : event.finalText;
+  if (outputText.trim()) {
+    clipboard.writeText(outputText);
     if (outputAction === 'copy') {
       sendToWindows('dictation:output-status', {
         type: 'dictation_output_status',

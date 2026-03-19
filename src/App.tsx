@@ -313,17 +313,18 @@ function isTranslationEnabled(settings: AppSettings): boolean {
 }
 
 function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle'): CaptionConfig {
+  const isDictation = mode === 'dictation';
   return {
     mode,
     sessionId: crypto.randomUUID(),
-    deviceId: mode === 'dictation' ? settings.dictationDeviceId : settings.subtitleDeviceId,
+    deviceId: isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
     outputDeviceId: settings.outputDeviceId,
-    sourceLang: mode === 'dictation' ? settings.dictationSourceLang : settings.sourceLang,
+    sourceLang: isDictation ? settings.dictationSourceLang : settings.sourceLang,
     targetLang: settings.targetLang,
-    sttModel: mode === 'dictation' ? settings.dictationSttModel : settings.sttModel,
+    sttModel: isDictation ? settings.dictationSttModel : settings.sttModel,
     translateModel: settings.translateModel,
-    chunkMs: settings.chunkMs,
-    partialStableMs: settings.partialStableMs,
+    chunkMs: isDictation ? settings.dictationChunkMs : settings.subtitleChunkMs,
+    partialStableMs: isDictation ? settings.dictationEndpointMs : settings.subtitlePartialStableMs,
     beamSize: settings.beamSize,
     bestOf: settings.bestOf,
     vadFilter: settings.vadFilter,

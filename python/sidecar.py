@@ -104,10 +104,16 @@ def build_dictation_final_event(
     transcript = normalize_text(" ".join(transcript_parts))
     if convert_s2t and opencc_s2t is not None and transcript:
         transcript = opencc_s2t.convert(transcript)
+    dictionary_text = transcript
+    final_text = dictionary_text
     return {
         "type": "dictation_final",
         "sessionId": session_id,
-        "text": transcript,
+        "literalTranscript": transcript,
+        "dictionaryText": dictionary_text,
+        "finalText": final_text,
+        "rewriteBackend": "disabled",
+        "rewriteApplied": False,
         "chunkCount": len(transcript_parts),
         "startedAtMs": started_at_ms,
         "endedAtMs": ended_at_ms,

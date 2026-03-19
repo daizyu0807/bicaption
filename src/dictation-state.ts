@@ -5,7 +5,12 @@ export interface DictationViewState {
   dictationState: string;
   activeSessionId: string | null;
   detail: string | null;
+  literalTranscript: string;
+  dictionaryText: string;
   finalText: string;
+  rewriteBackend: 'disabled' | 'rules' | 'cloud-llm' | 'local-llm' | null;
+  rewriteApplied: boolean;
+  fallbackReason: string | null;
   finalLatencyMs: number | null;
   finalChunkCount: number | null;
   lastError: string | null;
@@ -16,7 +21,12 @@ export const initialDictationViewState: DictationViewState = {
   dictationState: 'idle',
   activeSessionId: null,
   detail: null,
+  literalTranscript: '',
+  dictionaryText: '',
   finalText: '',
+  rewriteBackend: null,
+  rewriteApplied: false,
+  fallbackReason: null,
   finalLatencyMs: null,
   finalChunkCount: null,
   lastError: null,
@@ -36,7 +46,12 @@ export function reduceDictationEvent(state: DictationViewState, event: SidecarEv
           dictationState: 'idle',
           activeSessionId: event.sessionId,
           detail: event.detail ?? null,
+          literalTranscript: '',
+          dictionaryText: '',
           finalText: '',
+          rewriteBackend: null,
+          rewriteApplied: false,
+          fallbackReason: null,
           finalLatencyMs: null,
           finalChunkCount: null,
           lastError: null,
@@ -70,7 +85,12 @@ export function reduceDictationEvent(state: DictationViewState, event: SidecarEv
         activeSessionId: state.activeSessionId ?? event.sessionId,
         dictationState: state.dictationState === 'error' ? state.dictationState : 'done',
         detail: state.detail,
-        finalText: event.text,
+        literalTranscript: event.literalTranscript,
+        dictionaryText: event.dictionaryText,
+        finalText: event.finalText,
+        rewriteBackend: event.rewriteBackend,
+        rewriteApplied: event.rewriteApplied,
+        fallbackReason: event.fallbackReason ?? null,
         finalLatencyMs: event.latencyMs,
         finalChunkCount: event.chunkCount ?? null,
       };

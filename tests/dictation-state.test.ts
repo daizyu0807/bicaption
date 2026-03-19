@@ -20,7 +20,11 @@ test('dictation reducer tracks active session and final transcript', () => {
     type: 'dictation_final',
     mode: 'dictation',
     sessionId: 'dictation-1',
-    text: 'hello world',
+    literalTranscript: 'hello world',
+    dictionaryText: 'hello world',
+    finalText: 'hello world',
+    rewriteBackend: 'disabled',
+    rewriteApplied: false,
     chunkCount: 2,
     startedAtMs: 10,
     endedAtMs: 40,
@@ -29,7 +33,11 @@ test('dictation reducer tracks active session and final transcript', () => {
 
   assert.equal(completed.activeSessionId, 'dictation-1');
   assert.equal(completed.dictationState, 'done');
+  assert.equal(completed.literalTranscript, 'hello world');
+  assert.equal(completed.dictionaryText, 'hello world');
   assert.equal(completed.finalText, 'hello world');
+  assert.equal(completed.rewriteBackend, 'disabled');
+  assert.equal(completed.rewriteApplied, false);
   assert.equal(completed.finalChunkCount, 2);
   assert.equal(completed.finalLatencyMs, 30);
 });
@@ -61,7 +69,11 @@ test('dictation reducer ignores stale session events', () => {
     type: 'dictation_final',
     mode: 'dictation',
     sessionId: 'dictation-2',
-    text: 'wrong session',
+    literalTranscript: 'wrong session',
+    dictionaryText: 'wrong session',
+    finalText: 'wrong session',
+    rewriteBackend: 'disabled',
+    rewriteApplied: false,
     startedAtMs: 1,
     endedAtMs: 2,
     latencyMs: 1,
