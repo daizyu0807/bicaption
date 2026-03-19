@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialDictationViewState, reduceDictationEvent } from '../src/dictation-state.js';
+import { initialDictationViewState, reduceDictationEvent, reduceDictationOutputStatus } from '../src/dictation-state.js';
 
 test('dictation reducer tracks active session and final transcript', () => {
   const connecting = reduceDictationEvent(initialDictationViewState, {
@@ -80,4 +80,17 @@ test('dictation reducer ignores stale session events', () => {
   });
 
   assert.deepEqual(state, connecting);
+});
+
+test('dictation output status is tracked separately', () => {
+  const state = reduceDictationOutputStatus(initialDictationViewState, {
+    type: 'dictation_output_status',
+    action: 'paste',
+    status: 'fallback',
+    detail: 'Focus changed, kept clipboard copy.',
+  });
+
+  assert.equal(state.outputAction, 'paste');
+  assert.equal(state.outputStatus, 'fallback');
+  assert.equal(state.outputDetail, 'Focus changed, kept clipboard copy.');
 });

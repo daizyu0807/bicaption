@@ -10,7 +10,7 @@ import type {
   SidecarEvent,
 } from '../electron/types.js';
 import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from './caption-state.js';
-import { initialDictationViewState, reduceDictationEvent } from './dictation-state.js';
+import { initialDictationViewState, reduceDictationEvent, reduceDictationOutputStatus } from './dictation-state.js';
 import { pickPreferredInputDevice } from './device-preferences.js';
 import { getDictationHotkeyLabel, isModifierOnlyHotkey, validateDictationHotkey } from './dictation-hotkey.js';
 
@@ -249,6 +249,22 @@ function useDictationState() {
       const event = payload as SidecarEvent;
       startTransition(() => {
         setViewState((current) => reduceDictationEvent(current, event));
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!window.app) {
+      return;
+    }
+    return window.app.subscribe('dictation:output-status', (payload) => {
+      startTransition(() => {
+        setViewState((current) => reduceDictationOutputStatus(current, payload as {
+          type: 'dictation_output_status';
+          action: DictationOutputAction;
+          status: 'copied' | 'pasted' | 'fallback';
+          detail?: string;
+        }));
       });
     });
   }, []);
@@ -892,6 +908,14 @@ function SettingsView({
           </label>
           {getRewriteFallbackLabel(dictationViewState.fallbackReason) && (
             <p className="model-hint">{getRewriteFallbackLabel(dictationViewState.fallbackReason)}</p>
+          )}
+          {dictationViewState.outputStatus && (
+            <p className="model-hint">
+              輸出狀態：
+              {dictationViewState.outputStatus === 'copied' && '已複製到剪貼簿。'}
+              {dictationViewState.outputStatus === 'pasted' && '已貼到目前視窗。'}
+              {dictationViewState.outputStatus === 'fallback' && (dictationViewState.outputDetail ?? '貼上失敗，已保留剪貼簿內容。')}
+            </p>
           )}
         </article>
         </div>

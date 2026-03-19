@@ -1,4 +1,4 @@
-import type { SidecarEvent } from '../electron/types.js';
+import type { DictationOutputAction, DictationOutputStatusEvent, SidecarEvent } from '../electron/types.js';
 
 export interface DictationViewState {
   sessionState: string;
@@ -13,6 +13,9 @@ export interface DictationViewState {
   fallbackReason: string | null;
   finalLatencyMs: number | null;
   finalChunkCount: number | null;
+  outputAction: DictationOutputAction | null;
+  outputStatus: DictationOutputStatusEvent['status'] | null;
+  outputDetail: string | null;
   lastError: string | null;
 }
 
@@ -29,6 +32,9 @@ export const initialDictationViewState: DictationViewState = {
   fallbackReason: null,
   finalLatencyMs: null,
   finalChunkCount: null,
+  outputAction: null,
+  outputStatus: null,
+  outputDetail: null,
   lastError: null,
 };
 
@@ -54,6 +60,9 @@ export function reduceDictationEvent(state: DictationViewState, event: SidecarEv
           fallbackReason: null,
           finalLatencyMs: null,
           finalChunkCount: null,
+          outputAction: null,
+          outputStatus: null,
+          outputDetail: null,
           lastError: null,
         };
       }
@@ -117,4 +126,16 @@ export function reduceDictationEvent(state: DictationViewState, event: SidecarEv
     case 'metrics':
       return state;
   }
+}
+
+export function reduceDictationOutputStatus(
+  state: DictationViewState,
+  event: DictationOutputStatusEvent,
+): DictationViewState {
+  return {
+    ...state,
+    outputAction: event.action,
+    outputStatus: event.status,
+    outputDetail: event.detail ?? null,
+  };
 }
