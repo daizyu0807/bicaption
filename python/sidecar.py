@@ -406,13 +406,24 @@ def apply_dictation_rules_rewrite(text: str) -> str:
     rewritten = normalize_text(text)
     if not rewritten:
         return ""
+    deterministic_replacements = [
+        ("罪字", "贅字"),
+        ("標底符號", "標點符號"),
+    ]
+    for source, target in deterministic_replacements:
+        rewritten = rewritten.replace(source, target)
     filler_patterns = [
         r"\b(?:um|uh|erm|hmm|mm)\b",
-        r"\b(?:那個|就是|嗯|呃|啊)\b",
+        r"(?:(?<=^)|(?<=[\s，。！？；：,]))(?:那個|就是|嗯|呃|啊|哎|欸|誒|唉|哈|啦|咧|喔|哦)(?=$|(?=[\s，。！？；：,]))",
+        r"(?:那個|就是|嗯|呃|啊|哎|欸|誒|唉|哈|啦|咧|喔|哦)(?=[，。！？；：,]?$)",
     ]
     for pattern in filler_patterns:
         rewritten = re.sub(pattern, " ", rewritten, flags=re.IGNORECASE)
     rewritten = re.sub(r"\b(\w+)(?:\s+\1\b)+", r"\1", rewritten, flags=re.IGNORECASE)
+    rewritten = re.sub(r"(.)\1{2,}", r"\1\1", rewritten)
+    rewritten = re.sub(r"([。！？；：])\s*([，；：])", r"\1 ", rewritten)
+    rewritten = re.sub(r"([。！？])\s*([^。！？；：，,\s])", r"\1 \2", rewritten)
+    rewritten = re.sub(r"([。！？；：，])\s+([\u4e00-\u9fff])", r"\1\2", rewritten)
     rewritten = re.sub(r"\s+([,.;:!?，。！？；：])", r"\1", rewritten)
     rewritten = re.sub(r"([,.;:!?，。！？；：]){2,}", r"\1", rewritten)
     rewritten = re.sub(r"\s+", " ", rewritten).strip(" ,.;:!?，。！？；：")

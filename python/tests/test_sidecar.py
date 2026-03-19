@@ -126,6 +126,15 @@ class TranslationProviderTest(unittest.TestCase):
         rewritten = apply_dictation_rules_rewrite("um um hello hello 那個 world")
         self.assertEqual(rewritten, "hello world")
 
+    def test_apply_dictation_rules_rewrite_cleans_traditional_chinese_fillers_and_common_stt_typos(self) -> None:
+        rewritten = apply_dictation_rules_rewrite(
+            "對，現在來測試繁體中文的斷句，看是不是有變得比較正常了。那這一句話就會稍微長一點。哎，這麼說的話也會有蠻多的罪字的哈"
+        )
+        self.assertEqual(
+            rewritten,
+            "對，現在來測試繁體中文的斷句，看是不是有變得比較正常了。那這一句話就會稍微長一點。這麼說的話也會有蠻多的贅字的",
+        )
+
     def test_dictation_final_event_applies_dictionary_and_rules(self) -> None:
         event = build_dictation_final_event(
             "session-3",
