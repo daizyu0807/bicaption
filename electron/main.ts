@@ -134,6 +134,9 @@ function handleDictationFinal(event: SidecarEvent) {
     }
   }
   pendingDictationPasteTarget = null;
+  clearActiveSession(event.sessionId);
+  dictationHotkeyPressed = false;
+  pendingDictationStop = false;
   sendToWindows('sidecar:event', event);
 }
 
@@ -582,6 +585,9 @@ function bindBridge() {
   bridge.on('dictation_state', (event: SidecarEvent) => {
     if (event.type === 'dictation_state') {
       showDictationOverlay();
+      if (event.state === 'stopped' || event.state === 'error') {
+        dictationHotkeyPressed = false;
+      }
     }
     forwardEvent(event);
   });
