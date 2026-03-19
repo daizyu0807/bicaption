@@ -42,6 +42,7 @@ from sidecar import (
     apply_dictation_dictionary,
     apply_dictation_rules_rewrite,
     build_local_llm_rewrite_prompt,
+    get_local_llm_python_bin,
     LocalLlmRewriteProvider,
     FallbackTranslator,
     build_dictation_final_event,
@@ -179,6 +180,24 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertIn("Preserve protected terms exactly", prompt)
         self.assertIn("ChatGPT", prompt)
         self.assertIn("BiCaption", prompt)
+
+    @patch.dict("sidecar.os.environ", {"BICAPTION_LOCAL_LLM_PYTHON": "/custom/python"}, clear=False)
+    def test_local_llm_python_bin_prefers_env(self) -> None:
+        self.assertEqual(get_local_llm_python_bin(), "/custom/python")
+
+    @patch.dict("sidecar.os.environ", {}, clear=True)
+    @patch("sidecar.os.path.exists")
+    @patch("sidecar.sys.executable", "/Users/test/.venv/bin/python")
+    def test_local_llm_python_bin_uses_current_python_when_available(self, exists_mock) -> None:
+        exists_mock.return_value = False
+        self.assertEqual(get_local_llm_python_bin(), "/Users/test/.venv/bin/python")
+
+    @patch.dict("sidecar.os.environ", {}, clear=True)
+    @patch("sidecar.os.path.exists")
+    @patch("sidecar.sys.executable", "/Applications/BiCaption.app/Contents/MacOS/bicaption-sidecar")
+    def test_local_llm_python_bin_falls_back_to_project_venv(self, exists_mock) -> None:
+        exists_mock.side_effect = lambda path: path.endswith(".venv/bin/python")
+        self.assertTrue(get_local_llm_python_bin().endswith(".venv/bin/python"))
 
     def test_local_llm_provider_reports_missing_script(self) -> None:
         provider = LocalLlmRewriteProvider("/tmp/non-existent-rewriter.py")

@@ -62,6 +62,15 @@ else
   echo "[build-sidecar] WARNING: global-hotkey not found, native dictation hotkey won't work in packaged build"
 fi
 
+LOCAL_LLM_REWRITE="$PYTHON_DIR/local-llm-rewrite.py"
+LOCAL_LLM_REWRITE_FLAG=""
+if [ -f "$LOCAL_LLM_REWRITE" ]; then
+  LOCAL_LLM_REWRITE_FLAG="--add-data=$LOCAL_LLM_REWRITE:."
+  echo "[build-sidecar] Including local-llm-rewrite.py"
+else
+  echo "[build-sidecar] WARNING: local-llm-rewrite.py not found, local LLM rewrite won't work in packaged build"
+fi
+
 "$VENV_PYTHON" -m PyInstaller \
   --onedir \
   --name bicaption-sidecar \
@@ -84,6 +93,7 @@ fi
   $SHERPA_NATIVE \
   $APPLE_STT_FLAG \
   $GLOBAL_HOTKEY_FLAG \
+  $LOCAL_LLM_REWRITE_FLAG \
   sidecar.py
 
 BINARY="$PYTHON_DIR/dist/bicaption-sidecar/bicaption-sidecar"

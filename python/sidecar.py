@@ -468,6 +468,22 @@ def build_local_llm_rewrite_prompt(
     )
 
 
+def get_local_llm_python_bin() -> str:
+    env_python = os.environ.get("BICAPTION_LOCAL_LLM_PYTHON", "").strip()
+    if env_python:
+        return env_python
+    executable_name = os.path.basename(sys.executable).lower()
+    if executable_name.startswith("python"):
+        return sys.executable
+    project_python = os.path.join(os.path.dirname(SCRIPT_DIR), ".venv", "bin", "python")
+    if os.path.exists(project_python):
+        return project_python
+    for candidate in ["/opt/homebrew/bin/python3", "/usr/bin/python3", "python3"]:
+        if candidate == "python3" or os.path.exists(candidate):
+            return candidate
+    return sys.executable
+
+
 class DictationRewriteProvider:
     backend = "disabled"
 
@@ -588,7 +604,7 @@ class LocalLlmRewriteProvider(DictationRewriteProvider):
         }
         try:
             result = subprocess.run(
-                [sys.executable, self.script_path],
+                [get_local_llm_python_bin(), self.script_path],
                 input=json.dumps(payload, ensure_ascii=False),
                 capture_output=True,
                 text=True,
