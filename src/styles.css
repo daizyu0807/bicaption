@@ -373,13 +373,13 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 4px;
 }
 
 .dictation-float-orb {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   margin: 0;
   border-radius: 999px;
@@ -395,7 +395,7 @@ button:disabled {
     linear-gradient(180deg, #ffb977 0%, #ff8b54 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 10px 24px rgba(255, 128, 64, 0.34);
+    0 8px 18px rgba(255, 128, 64, 0.24);
 }
 
 .dictation-float-orb:hover,
@@ -409,7 +409,7 @@ button:disabled {
     linear-gradient(180deg, #8bc7ff 0%, #5d9dff 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 10px 24px rgba(81, 139, 255, 0.28);
+    0 8px 18px rgba(81, 139, 255, 0.22);
 }
 
 .dictation-float-done .dictation-float-orb {
@@ -418,14 +418,14 @@ button:disabled {
     linear-gradient(180deg, #8edca2 0%, #4cbf7a 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 10px 24px rgba(67, 173, 109, 0.26);
+    0 8px 18px rgba(67, 173, 109, 0.2);
 }
 
 .dictation-float-wave {
   position: absolute;
-  inset: -7px;
+  inset: -5px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 177, 112, 0.3);
+  border: 1px solid rgba(255, 177, 112, 0.24);
   animation: dictation-orb-wave 1.8s ease-out infinite;
 }
 
@@ -442,16 +442,16 @@ button:disabled {
 }
 
 .dictation-float-bars {
-  width: 22px;
-  height: 18px;
+  width: 16px;
+  height: 14px;
   display: flex;
   align-items: end;
   justify-content: center;
-  gap: 2px;
+  gap: 1.5px;
 }
 
 .dictation-float-bars span {
-  width: 4px;
+  width: 3px;
   border-radius: 999px;
   background: rgba(9, 12, 17, 0.82);
   animation: dictation-bars 0.9s ease-in-out infinite;
@@ -459,21 +459,21 @@ button:disabled {
 }
 
 .dictation-float-bars span:nth-child(1) {
-  height: 8px;
+  height: 6px;
 }
 
 .dictation-float-bars span:nth-child(2) {
-  height: 15px;
+  height: 11px;
   animation-delay: 0.12s;
 }
 
 .dictation-float-bars span:nth-child(3) {
-  height: 11px;
+  height: 8px;
   animation-delay: 0.24s;
 }
 
 .dictation-float-bars span:nth-child(4) {
-  height: 14px;
+  height: 10px;
   animation-delay: 0.36s;
 }
 

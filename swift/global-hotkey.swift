@@ -86,6 +86,7 @@ final class GlobalHotkeyListener {
     private let isModifierOnlyBinding: Bool
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var modifierOnlyPressed = false
 
     init(keyCode: Int, requiredFlags: CGEventFlags) {
         self.keyCode = Int64(keyCode)
@@ -174,15 +175,21 @@ final class GlobalHotkeyListener {
         let eventFlags = event.flags.intersection(relevantModifierFlags)
 
         if keyCode == 59 {
-            guard eventKeyCode == 59 || eventKeyCode == 62 else {
+            let isPressed = eventFlags.contains(.maskControl)
+            let isRelevantKey = eventKeyCode == 59 || eventKeyCode == 62
+            guard isRelevantKey || modifierOnlyPressed != isPressed else {
                 return Unmanaged.passUnretained(event)
             }
+            guard modifierOnlyPressed != isPressed else {
+                return Unmanaged.passUnretained(event)
+            }
+            modifierOnlyPressed = isPressed
             emitJSON([
-                "type": eventFlags.contains(.maskControl) ? "hotkey_down" : "hotkey_up",
+                "type": isPressed ? "hotkey_down" : "hotkey_up",
                 "keyCode": eventKeyCode,
                 "modifiers": [
                     "command": eventFlags.contains(.maskCommand),
-                    "control": eventFlags.contains(.maskControl),
+                    "control": isPressed,
                     "shift": eventFlags.contains(.maskShift),
                     "option": eventFlags.contains(.maskAlternate),
                     "fn": eventFlags.contains(.maskSecondaryFn),
@@ -192,18 +199,23 @@ final class GlobalHotkeyListener {
         }
 
         if keyCode == 63 {
-            guard eventKeyCode == 63 else {
+            let isPressed = eventFlags.contains(.maskSecondaryFn)
+            guard eventKeyCode == 63 || modifierOnlyPressed != isPressed else {
                 return Unmanaged.passUnretained(event)
             }
+            guard modifierOnlyPressed != isPressed else {
+                return Unmanaged.passUnretained(event)
+            }
+            modifierOnlyPressed = isPressed
             emitJSON([
-                "type": eventFlags.contains(.maskSecondaryFn) ? "hotkey_down" : "hotkey_up",
+                "type": isPressed ? "hotkey_down" : "hotkey_up",
                 "keyCode": eventKeyCode,
                 "modifiers": [
                     "command": eventFlags.contains(.maskCommand),
                     "control": eventFlags.contains(.maskControl),
                     "shift": eventFlags.contains(.maskShift),
                     "option": eventFlags.contains(.maskAlternate),
-                    "fn": eventFlags.contains(.maskSecondaryFn),
+                    "fn": isPressed,
                 ],
             ])
             return Unmanaged.passUnretained(event)
