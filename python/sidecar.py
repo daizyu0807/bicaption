@@ -1344,17 +1344,20 @@ class AppleSttTranscriber:
         proc = self._proc
         self._proc = None
         if proc and proc.poll() is None:
-            # Close stdin to signal EOF, then terminate
+            # Close stdin to signal EOF and let apple-stt flush its final partial.
             if proc.stdin:
                 try:
                     proc.stdin.close()
                 except OSError:
                     pass
-            proc.terminate()
             try:
-                proc.wait(timeout=3)
+                proc.wait(timeout=1.2)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1.5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
 
     def _read_stdout(self) -> None:
         assert self._proc is not None and self._proc.stdout is not None

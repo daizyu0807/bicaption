@@ -65,8 +65,12 @@ class SpeechEngine {
     func stop() {
         running = false
         cancelRestartTimer()
-        task?.cancel()
+        if !lastPartialText.isEmpty {
+            emitFinal(lastPartialText, result: nil)
+            lastPartialText = ""
+        }
         request?.endAudio()
+        task?.finish()
         task = nil
         request = nil
     }
