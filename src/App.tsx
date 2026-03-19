@@ -335,7 +335,14 @@ function getDictationPrompt(
       detail: '按住快捷鍵繼續說話，放開後送出辨識。',
     };
   }
-  if (state.dictationState === 'capturing' || state.dictationState === 'processing' || state.sessionState === 'connecting') {
+  if (state.dictationState === 'capturing') {
+    return {
+      tone: 'live',
+      title: '正在聽你說',
+      detail: '持續收音中，放開後才會開始整理。',
+    };
+  }
+  if (state.dictationState === 'processing' || state.sessionState === 'connecting') {
     return {
       tone: 'processing',
       title: '正在整理語音',

@@ -1859,6 +1859,8 @@ class SidecarApp:
             trace_debug(f"emitted session_state stopped session={self.config.session_id if self.config else 'none'}")
         if self.config is not None and self.config.mode == "dictation":
             self.dictation_last_update_ms = max(self.dictation_last_update_ms, now_ms())
+            emit(build_dictation_state_event("processing", "Finalizing dictation output"))
+            trace_debug(f"emitted dictation_state processing session={self.config.session_id}")
             emit(build_dictation_state_event("stopped", "Dictation session stopped"))
             trace_debug(f"emitted dictation_state stopped session={self.config.session_id}")
             emit(
