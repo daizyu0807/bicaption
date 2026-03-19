@@ -88,3 +88,7 @@ export function getModelDir(): string {
   }
   return join(projectRoot, 'python');
 }
+
+export function getDebugTracePath(): string {
+  return join(getSpawnCwd(), '.debug', 'dictation-trace.log');
+}

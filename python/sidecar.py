@@ -38,6 +38,18 @@ DEFAULT_EMIT_CONTEXT = {
     "sessionId": "bootstrap",
 }
 _emit_context = dict(DEFAULT_EMIT_CONTEXT)
+TRACE_PATH = os.environ.get("BICAPTION_TRACE_PATH", "").strip()
+
+
+def trace_debug(message: str) -> None:
+    if not TRACE_PATH:
+        return
+    try:
+        os.makedirs(os.path.dirname(TRACE_PATH), exist_ok=True)
+        with open(TRACE_PATH, "a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} [python-sidecar] {message}\n")
+    except OSError:
+        return
 
 
 def emit(event: dict[str, Any]) -> None:
@@ -1571,7 +1583,9 @@ class SidecarApp:
         return 0
 
     def start_session(self, payload: dict[str, Any]) -> None:
+        trace_debug(f"start_session enter active={self.active} payload_session={payload.get('sessionId', '')}")
         if self.active:
+            trace_debug("start_session detected existing active session; stopping first")
             self.stop_session()
 
         self.config = SessionConfig(
@@ -1600,6 +1614,7 @@ class SidecarApp:
             self.dictation_started_at_ms = now_ms()
             self.dictation_last_update_ms = self.dictation_started_at_ms
             emit(build_dictation_state_event("recording", "Dictation session started"))
+            trace_debug(f"dictation recording session={self.config.session_id}")
         self.stop_event.clear()
         self.active = True
         emit({"type": "session_state", "state": "connecting", "detail": f"Connecting to {self.config.device_id}"})
@@ -1647,8 +1662,10 @@ class SidecarApp:
 
         self.thread = threading.Thread(target=self._stream_loop, daemon=True)
         self.thread.start()
+        trace_debug(f"start_session exit session={self.config.session_id} mode={self.config.mode}")
 
     def stop_session(self) -> None:
+        trace_debug(f"stop_session enter active={self.active} session={self.config.session_id if self.config else 'none'}")
         self.stop_event.set()
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.5)
@@ -1662,9 +1679,11 @@ class SidecarApp:
         if self.active:
             self.active = False
             emit({"type": "session_state", "state": "stopped"})
+            trace_debug(f"emitted session_state stopped session={self.config.session_id if self.config else 'none'}")
         if self.config is not None and self.config.mode == "dictation":
             self.dictation_last_update_ms = max(self.dictation_last_update_ms, now_ms())
             emit(build_dictation_state_event("stopped", "Dictation session stopped"))
+            trace_debug(f"emitted dictation_state stopped session={self.config.session_id}")
             emit(
                 build_dictation_final_event(
                     self.config.session_id,
@@ -1683,7 +1702,9 @@ class SidecarApp:
                     local_llm_runner=self.config.dictation_local_llm_runner,
                 )
             )
+            trace_debug(f"emitted dictation_final session={self.config.session_id} parts={len(self.dictation_parts)}")
         emit({"type": "session_stopped_ack"})
+        trace_debug(f"emitted session_stopped_ack session={self.config.session_id if self.config else 'none'}")
 
     def _should_translate(self, chunk: TranscriptChunk) -> bool:
         if self.translator is None or self.config is None:

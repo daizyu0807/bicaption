@@ -1,11 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CaptionConfig, SidecarEvent } from './types.js';
-import { getSidecarCommand, getModelDir, getSpawnCwd } from './paths.js';
+import { getDebugTracePath, getSidecarCommand, getModelDir, getSpawnCwd } from './paths.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ignoredStderrPatterns = [
@@ -18,6 +18,16 @@ const ignoredStdoutPatterns = [
   'OpenMP',
   'MKL_VERBOSE',
 ];
+const tracePath = getDebugTracePath();
+
+function traceSidecar(message: string) {
+  try {
+    mkdirSync(dirname(tracePath), { recursive: true });
+    appendFileSync(tracePath, `${new Date().toISOString()} [electron-sidecar] ${message}\n`, 'utf-8');
+  } catch {
+    // Ignore trace write failures.
+  }
+}
 
 interface SidecarCommand {
   command: 'start_session' | 'stop_session' | 'ping';
@@ -35,6 +45,7 @@ export class SidecarBridge extends EventEmitter {
     }
 
     const { command, args: spawnArgs } = getSidecarCommand();
+    traceSidecar(`spawn command=${command} args=${spawnArgs.join(' ')}`);
     const child = spawn(command, spawnArgs, {
       cwd: getSpawnCwd(),
       env: {
@@ -44,6 +55,7 @@ export class SidecarBridge extends EventEmitter {
         KMP_WARNINGS: '0',
         MKL_VERBOSE: '0',
         BICAPTION_MODEL_DIR: getModelDir(),
+        BICAPTION_TRACE_PATH: tracePath,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -71,7 +83,9 @@ export class SidecarBridge extends EventEmitter {
       }
       try {
         const event = JSON.parse(trimmed) as SidecarEvent;
+        traceSidecar(`stdout event=${event.type} session=${event.sessionId} mode=${event.mode}`);
         if (event.type === 'session_stopped_ack') {
+          traceSidecar(`resolving pending stop for session=${event.sessionId}`);
           this.finishPendingStop();
         }
         this.emit(event.type, event);
@@ -93,6 +107,7 @@ export class SidecarBridge extends EventEmitter {
       if (!line.trim()) {
         return;
       }
+      traceSidecar(`stderr ${line.trim()}`);
       if (ignoredStderrPatterns.some((pattern) => line.includes(pattern))) {
         return;
       }
@@ -107,6 +122,7 @@ export class SidecarBridge extends EventEmitter {
     });
 
     child.on('exit', (code, signal) => {
+      traceSidecar(`child exit code=${String(code)} signal=${String(signal)}`);
       this.child = null;
       this.finishPendingStop();
       this.emit('session_state', {
@@ -123,6 +139,7 @@ export class SidecarBridge extends EventEmitter {
     if (!this.child) {
       this.start();
     }
+    traceSidecar(`send command=${command.command} session=${String((command.payload as CaptionConfig)?.sessionId ?? '')}`);
     this.child?.stdin.write(`${JSON.stringify(command)}\n`);
   }
 
@@ -132,11 +149,14 @@ export class SidecarBridge extends EventEmitter {
 
   stopSession() {
     if (!this.child) {
+      traceSidecar('stopSession skipped because child is null');
       return Promise.resolve();
     }
     if (this.pendingStopPromise) {
+      traceSidecar('stopSession reused existing pendingStopPromise');
       return this.pendingStopPromise;
     }
+    traceSidecar('stopSession created pendingStopPromise');
     this.pendingStopPromise = new Promise<void>((resolve) => {
       this.resolvePendingStop = resolve;
     });
@@ -156,6 +176,7 @@ export class SidecarBridge extends EventEmitter {
   }
 
   private finishPendingStop() {
+    traceSidecar('finishPendingStop invoked');
     this.resolvePendingStop?.();
     this.resolvePendingStop = null;
     this.pendingStopPromise = null;

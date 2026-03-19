@@ -8,7 +8,7 @@ import { SidecarBridge } from './sidecar.js';
 import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
-import { getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
+import { getDebugTracePath, getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
 import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -40,6 +40,16 @@ let tray: Tray | null = null;
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
 const modelDownloader = new ModelDownloader(getModelDir());
+const tracePath = getDebugTracePath();
+
+function traceMain(message: string) {
+  try {
+    mkdirSync(dirname(tracePath), { recursive: true });
+    appendFileSync(tracePath, `${new Date().toISOString()} [electron-main] ${message}\n`, 'utf-8');
+  } catch {
+    // Ignore trace write failures.
+  }
+}
 
 function getTrayIconPath() {
   if (isPackaged) {
@@ -110,6 +120,7 @@ function handleDictationFinal(event: SidecarEvent) {
   if (event.type !== 'dictation_final') {
     return;
   }
+  traceMain(`dictation_final session=${event.sessionId} literal=${event.literalTranscript.length} final=${event.finalText.length}`);
   const settings = loadSettings();
   const outputAction = settings.dictationOutputAction;
   const outputText = settings.dictationOutputStyle === 'literal'
@@ -273,6 +284,7 @@ function prepareSession(config: CaptionConfig) {
 
 function clearActiveSession(sessionId?: string) {
   if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
+    traceMain(`clearActiveSession target=${sessionId ?? 'none'} active=${activeSessionId ?? 'none'}`);
     activeSessionMode = null;
     activeSessionId = null;
     pendingDictationStop = false;
@@ -282,9 +294,12 @@ function clearActiveSession(sessionId?: string) {
 
 async function stopActiveSession() {
   if (!activeSessionMode) {
+    traceMain('stopActiveSession skipped because activeSessionMode is null');
     return;
   }
+  traceMain(`stopActiveSession mode=${activeSessionMode} session=${activeSessionId ?? 'none'}`);
   await bridge.stopSession();
+  traceMain(`stopActiveSession resolved session=${activeSessionId ?? 'none'}`);
 }
 
 function runSessionTransition(task: () => Promise<void>) {
@@ -302,25 +317,32 @@ function runSessionTransition(task: () => Promise<void>) {
 }
 
 async function startDictationFromHotkey() {
+  traceMain(`startDictationFromHotkey enter pressed=${String(dictationHotkeyPressed)} activeMode=${activeSessionMode ?? 'none'} pendingStop=${String(pendingDictationStop)} transition=${String(Boolean(sessionTransitionPromise))}`);
   showDictationOverlay();
   await runSessionTransition(async () => {
     if (activeSessionMode) {
+      traceMain(`startDictationFromHotkey stopping active session=${activeSessionId ?? 'none'}`);
       await stopActiveSession();
     }
     const settings = loadSettings();
     const config = buildSessionConfig(settings, 'dictation');
     pendingDictationPasteTarget = null;
     prepareSession(config);
+    traceMain(`startDictationFromHotkey startSession session=${config.sessionId}`);
     bridge.startSession(config);
   });
   if (pendingDictationStop && activeSessionMode === 'dictation') {
+    traceMain(`startDictationFromHotkey detected pending stop for session=${activeSessionId ?? 'none'}`);
     pendingDictationStop = false;
     await stopDictationFromHotkey();
   }
+  traceMain(`startDictationFromHotkey exit activeMode=${activeSessionMode ?? 'none'} activeSession=${activeSessionId ?? 'none'}`);
 }
 
 async function stopDictationFromHotkey() {
+  traceMain(`stopDictationFromHotkey enter pressed=${String(dictationHotkeyPressed)} activeMode=${activeSessionMode ?? 'none'} transition=${String(Boolean(sessionTransitionPromise))}`);
   if (sessionTransitionPromise) {
+    traceMain('stopDictationFromHotkey deferred via pendingDictationStop');
     pendingDictationStop = true;
     return;
   }
@@ -328,11 +350,13 @@ async function stopDictationFromHotkey() {
   pendingDictationPasteTarget = currentFocus;
   await runSessionTransition(async () => {
     if (activeSessionMode !== 'dictation') {
+      traceMain(`stopDictationFromHotkey skipped because activeMode=${activeSessionMode ?? 'none'}`);
       return;
     }
     await stopActiveSession();
   });
   pendingDictationStop = false;
+  traceMain(`stopDictationFromHotkey exit activeMode=${activeSessionMode ?? 'none'} activeSession=${activeSessionId ?? 'none'}`);
 }
 
 function restartDictationHotkeyListener() {
@@ -597,6 +621,7 @@ function bindBridge() {
   });
   bridge.on('session_stopped_ack', (event: SidecarEvent) => {
     if (event.type === 'session_stopped_ack') {
+      traceMain(`session_stopped_ack session=${event.sessionId}`);
       clearActiveSession(event.sessionId);
     }
     rebuildTrayMenu();
@@ -620,6 +645,7 @@ function forwardEvent(event: SidecarEvent) {
 }
 
 function forwardHotkeyEvent(event: DictationHotkeyEvent) {
+  traceMain(`hotkey event=${event.type} keyCode=${String(event.keyCode)} pressed=${String(dictationHotkeyPressed)} mode=${hotkeyListenerMode}`);
   sendToWindows('dictation:hotkey-event', event);
   if (hotkeyListenerMode !== 'dictation') {
     return;
