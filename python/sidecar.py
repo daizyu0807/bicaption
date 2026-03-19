@@ -886,6 +886,25 @@ class SenseVoiceTranscriber:
             self.vad.accept_waveform(np.zeros(self.vad_window, dtype=np.float32))
         return self._process_vad_queue(base_time_ms)
 
+    def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        if audio.size < MIN_SPEECH_SAMPLES:
+            return []
+        text, lang = self._recognize(audio.astype(np.float32))
+        if not text or len(text.replace(" ", "")) < 2:
+            return []
+        self._segment_counter += 1
+        duration_ms = int(audio.size / SAMPLE_RATE * 1000)
+        return [TranscriptChunk(
+            mode=_emit_context["mode"],
+            session_id=_emit_context["sessionId"],
+            segment_id=f"seg-{self._segment_counter}",
+            source_text=text,
+            started_at_ms=base_time_ms,
+            ended_at_ms=base_time_ms + duration_ms,
+            confidence=0.0,
+            detected_lang=lang,
+        )]
+
 
 class WhisperTinyEnTranscriber:
     """VAD + Whisper tiny.en offline recognizer optimized for English."""
@@ -973,6 +992,25 @@ class WhisperTinyEnTranscriber:
         for _ in range(max(1, silence_windows)):
             self.vad.accept_waveform(np.zeros(self.vad_window, dtype=np.float32))
         return self._process_vad_queue(base_time_ms)
+
+    def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        if audio.size < MIN_SPEECH_SAMPLES:
+            return []
+        text, lang = self._recognize(audio.astype(np.float32))
+        if not text or len(text.replace(" ", "")) < 2:
+            return []
+        self._segment_counter += 1
+        duration_ms = int(audio.size / SAMPLE_RATE * 1000)
+        return [TranscriptChunk(
+            mode=_emit_context["mode"],
+            session_id=_emit_context["sessionId"],
+            segment_id=f"seg-{self._segment_counter}",
+            source_text=text,
+            started_at_ms=base_time_ms,
+            ended_at_ms=base_time_ms + duration_ms,
+            confidence=0.0,
+            detected_lang=lang,
+        )]
 
 
 class WhisperSmallTranscriber:
@@ -1064,6 +1102,25 @@ class WhisperSmallTranscriber:
             self.vad.accept_waveform(np.zeros(self.vad_window, dtype=np.float32))
         return self._process_vad_queue(base_time_ms)
 
+    def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        if audio.size < MIN_SPEECH_SAMPLES:
+            return []
+        text, lang = self._recognize(audio.astype(np.float32))
+        if not text or len(text.replace(" ", "")) < 2:
+            return []
+        self._segment_counter += 1
+        duration_ms = int(audio.size / SAMPLE_RATE * 1000)
+        return [TranscriptChunk(
+            mode=_emit_context["mode"],
+            session_id=_emit_context["sessionId"],
+            segment_id=f"seg-{self._segment_counter}",
+            source_text=text,
+            started_at_ms=base_time_ms,
+            ended_at_ms=base_time_ms + duration_ms,
+            confidence=0.0,
+            detected_lang=lang,
+        )]
+
 
 class ZipformerKoreanTranscriber:
     """VAD + Zipformer transducer optimized for Korean."""
@@ -1150,6 +1207,25 @@ class ZipformerKoreanTranscriber:
         for _ in range(max(1, silence_windows)):
             self.vad.accept_waveform(np.zeros(self.vad_window, dtype=np.float32))
         return self._process_vad_queue(base_time_ms)
+
+    def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        if audio.size < MIN_SPEECH_SAMPLES:
+            return []
+        text, lang = self._recognize(audio.astype(np.float32))
+        if not text or len(text.replace(" ", "")) < 2:
+            return []
+        self._segment_counter += 1
+        duration_ms = int(audio.size / SAMPLE_RATE * 1000)
+        return [TranscriptChunk(
+            mode=_emit_context["mode"],
+            session_id=_emit_context["sessionId"],
+            segment_id=f"seg-{self._segment_counter}",
+            source_text=text,
+            started_at_ms=base_time_ms,
+            ended_at_ms=base_time_ms + duration_ms,
+            confidence=0.0,
+            detected_lang=lang,
+        )]
 
 
 class AppleSttTranscriber:
@@ -1606,6 +1682,7 @@ class SidecarApp:
         self.dictation_started_at_ms = 0
         self.dictation_last_update_ms = 0
         self.dictation_max_input_level = 0.0
+        self.dictation_audio_buffer: list[np.ndarray] = []
         self.translation_queue: queue.Queue[tuple[TranscriptChunk, SessionConfig]] = queue.Queue()
         self.translation_worker = threading.Thread(target=self._translation_loop, daemon=True)
         self.translation_worker.start()
@@ -1667,6 +1744,7 @@ class SidecarApp:
             self.dictation_started_at_ms = now_ms()
             self.dictation_last_update_ms = self.dictation_started_at_ms
             self.dictation_max_input_level = 0.0
+            self.dictation_audio_buffer = []
             emit(build_dictation_state_event("recording", "Dictation session started"))
             trace_debug(f"dictation recording session={self.config.session_id}")
         self.stop_event.clear()
@@ -1738,6 +1816,21 @@ class SidecarApp:
                     )
                 except Exception as error:
                     trace_debug(f"dictation flush failed session={self.config.session_id} error={error}")
+            if not self.dictation_parts and self.dictation_max_input_level >= 0.08:
+                transcribe_buffer = getattr(self.transcriber, "transcribe_buffer", None)
+                if callable(transcribe_buffer) and self.dictation_audio_buffer:
+                    batch_base_ms = self.dictation_started_at_ms or now_ms()
+                    try:
+                        buffered_audio = np.concatenate(self.dictation_audio_buffer).astype(np.float32)
+                        fallback_chunks = transcribe_buffer(buffered_audio, batch_base_ms)
+                        for chunk in fallback_chunks:
+                            self._emit_final_chunk(chunk)
+                        trace_debug(
+                            f"dictation batch fallback emitted chunks={len(fallback_chunks)} session={self.config.session_id} "
+                            f"samples={buffered_audio.size} max_input_level={self.dictation_max_input_level:.4f}"
+                        )
+                    except Exception as error:
+                        trace_debug(f"dictation batch fallback failed session={self.config.session_id} error={error}")
         if self.capture is not None:
             self.capture.stop()
             self.capture = None
@@ -1843,6 +1936,8 @@ class SidecarApp:
 
             if incoming.size == 0:
                 continue
+            if self.config.mode == "dictation":
+                self.dictation_audio_buffer.append(np.copy(incoming))
 
             # Calculate base time from total samples fed
             base_time_ms = session_start_ms + int(total_samples_fed / SAMPLE_RATE * 1000)
