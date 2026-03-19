@@ -143,14 +143,31 @@ function OverlayView({
             }}
             aria-label={effectiveDictationPrompt.title}
           >
-            <span className="dictation-float-wave dictation-float-wave-a" />
-            <span className="dictation-float-wave dictation-float-wave-b" />
-            <span className="dictation-float-bars" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-            </span>
+            {effectiveDictationPrompt.tone === 'live' ? (
+              <>
+                <span className="dictation-float-wave dictation-float-wave-a" />
+                <span className="dictation-float-wave dictation-float-wave-b" />
+                <span className="dictation-float-bars" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              </>
+            ) : null}
+            {effectiveDictationPrompt.tone === 'processing' ? (
+              <span className="dictation-float-processing-glyph" aria-hidden="true">
+                <span className="dictation-float-spinner" />
+                <span className="dictation-float-dot dictation-float-dot-a" />
+                <span className="dictation-float-dot dictation-float-dot-b" />
+                <span className="dictation-float-dot dictation-float-dot-c" />
+              </span>
+            ) : null}
+            {effectiveDictationPrompt.tone === 'done' ? (
+              <span className="dictation-float-done-glyph" aria-hidden="true">
+                <span className="dictation-float-check" />
+              </span>
+            ) : null}
           </button>
         </section>
       </main>
