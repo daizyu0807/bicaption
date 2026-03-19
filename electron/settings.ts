@@ -1,6 +1,13 @@
 import Store from 'electron-store';
 import type { AppSettings } from './types.js';
 
+function normalizeDictationRewriteMode(mode: AppSettings['dictationRewriteMode'] | undefined): AppSettings['dictationRewriteMode'] {
+  if (mode === 'rules-and-local-llm') {
+    return mode;
+  }
+  return 'rules';
+}
+
 export const defaultSettings: AppSettings = {
   deviceId: '',
   subtitleDeviceId: '',
@@ -65,6 +72,8 @@ export function loadSettings(): AppSettings {
     subtitleChunkMs: stored.subtitleChunkMs ?? stored.chunkMs ?? defaultSettings.subtitleChunkMs,
     subtitlePartialStableMs: stored.subtitlePartialStableMs ?? stored.partialStableMs ?? defaultSettings.subtitlePartialStableMs,
     dictationChunkMs: stored.dictationChunkMs ?? stored.chunkMs ?? defaultSettings.dictationChunkMs,
+    dictationRewriteMode: normalizeDictationRewriteMode(stored.dictationRewriteMode),
+    dictationCloudEnhancementEnabled: false,
   };
   return current;
 }

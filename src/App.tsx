@@ -821,23 +821,18 @@ function SettingsView({
               <option value="polished">潤飾後</option>
             </select>
           </label>
-          <label>
-            整理模式
-            <select
-              value={draft.dictationRewriteMode}
-              onChange={(event) => {
-                const mode = event.target.value as AppSettings['dictationRewriteMode'];
-                setDraft({
-                  ...draft,
-                  dictationRewriteMode: mode,
-                  dictationCloudEnhancementEnabled: false,
-                });
-              }}
-            >
-              <option value="disabled">關閉</option>
-              <option value="rules">規則整理</option>
-              <option value="rules-and-local-llm">規則 + 本地 LLM</option>
-            </select>
+          <p className="model-hint">規則整理會固定啟用。若選「潤飾後」，系統會先套用 dictionary 與 rules，再依設定決定是否加上本地 LLM。</p>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={draft.dictationRewriteMode === 'rules-and-local-llm'}
+              onChange={(event) => setDraft({
+                ...draft,
+                dictationRewriteMode: event.target.checked ? 'rules-and-local-llm' : 'rules',
+                dictationCloudEnhancementEnabled: false,
+              })}
+            />
+            啟用本地 LLM 潤稿
           </label>
           <label className="toggle-row">
             <input
