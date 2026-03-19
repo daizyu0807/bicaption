@@ -7,6 +7,10 @@ INPUT_FILE=""
 PROMPT_TEXT=""
 MAX_CHARS=24000
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/reviewer-common.sh"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -61,70 +65,6 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
-trim() {
-  printf '%s' "$1" | awk '{$1=$1; print}'
-}
-
-status_codex() {
-  if ! command -v codex >/dev/null 2>&1; then
-    echo "missing|Codex CLI not installed"
-    return
-  fi
-
-  local output
-  output="$(codex login status 2>&1 || true)"
-  output="$(printf '%s\n' "$output" | rg -v '^WARNING: proceeding, even though we could not update PATH:' || true)"
-  if printf '%s' "$output" | rg -q "Logged in"; then
-    echo "ready|$(trim "$output")"
-    return
-  fi
-  echo "auth|$(trim "$output")"
-}
-
-status_claude() {
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "missing|Claude CLI not installed"
-    return
-  fi
-
-  local output
-  output="$(claude auth status 2>&1 || true)"
-  if printf '%s' "$output" | rg -q '"loggedIn"[[:space:]]*:[[:space:]]*true'; then
-    echo "ready|$(trim "$output")"
-    return
-  fi
-  if printf '%s' "$output" | rg -q '"loggedIn"[[:space:]]*:[[:space:]]*false'; then
-    echo "auth|$(trim "$output")"
-    return
-  fi
-  echo "unknown|$(trim "$output")"
-}
-
-status_gemini() {
-  if ! command -v gemini >/dev/null 2>&1; then
-    echo "missing|Gemini CLI not installed"
-    return
-  fi
-
-  if [[ -n "${GEMINI_API_KEY:-}" ]]; then
-    echo "ready|GEMINI_API_KEY is set"
-    return
-  fi
-
-  echo "unknown|Gemini CLI installed, but no non-interactive auth status check is configured"
-}
-
-get_status() {
-  case "$1" in
-    codex) status_codex ;;
-    claude) status_claude ;;
-    gemini) status_gemini ;;
-    *)
-      echo "unknown|Unsupported thinker: $1"
-      ;;
-  esac
-}
 
 print_status_table() {
   local thinker raw state detail
@@ -181,7 +121,7 @@ run_thinker() {
       printf '%s' "$prompt" | claude -p
       ;;
     gemini)
-      printf '%s' "$prompt" | gemini -p ""
+      run_gemini_headless "$prompt"
       ;;
   esac
 }
