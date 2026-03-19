@@ -303,11 +303,11 @@ button:disabled {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .dictation-section-title {
-  font-size: 0.88rem;
+  font-size: 0.83rem;
   line-height: 1.2;
   letter-spacing: -0.01em;
   color: #fff4e7;
@@ -361,7 +361,15 @@ button:disabled {
 
 .dictation-permission-copy {
   color: rgba(246, 239, 227, 0.68);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
+}
+
+.dictation-permission-row .hotkey-permission-ok,
+.dictation-permission-row .hotkey-permission-missing {
+  min-width: 48px;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  text-align: right;
 }
 
 .dictation-detail-stack {

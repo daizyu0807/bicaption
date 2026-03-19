@@ -656,10 +656,7 @@ function SettingsView({
           <div className="dictation-flow-grid">
             <article className="dictation-section dictation-section-primary">
               <div className="dictation-section-header">
-                <div>
-                  <p className="dictation-section-kicker">啟動</p>
-                  <h3 className="dictation-section-title">決定怎麼開始說話</h3>
-                </div>
+                <h3 className="dictation-section-title">啟動</h3>
               </div>
               <div className="dictation-inline-grid">
                 <label>
@@ -751,23 +748,24 @@ function SettingsView({
                   <strong className={inputMonitoringPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
                     {getPermissionLabel(inputMonitoringPermission, 'input-monitoring')}
                   </strong>
-                  <button
-                    className="secondary"
-                    disabled={Boolean(inputMonitoringPermission?.trusted)}
-                    onClick={async () => {
-                      setHotkeyTestError(null);
-                      try {
-                        const granted = await ensureInputMonitoringPermission();
-                        if (!granted) {
-                          setHotkeyTestError('Input Monitoring 設定已開啟。允許後若仍無法使用，請重新開啟 app。');
+                  {!inputMonitoringPermission?.trusted && (
+                    <button
+                      className="secondary"
+                      onClick={async () => {
+                        setHotkeyTestError(null);
+                        try {
+                          const granted = await ensureInputMonitoringPermission();
+                          if (!granted) {
+                            setHotkeyTestError('Input Monitoring 設定已開啟。允許後若仍無法使用，請重新開啟 app。');
+                          }
+                        } catch (error) {
+                          setHotkeyTestError(error instanceof Error ? error.message : 'Failed to request Input Monitoring permission');
                         }
-                      } catch (error) {
-                        setHotkeyTestError(error instanceof Error ? error.message : 'Failed to request Input Monitoring permission');
-                      }
-                    }}
-                  >
-                    前往授權
-                  </button>
+                      }}
+                    >
+                      前往授權
+                    </button>
+                  )}
                 </div>
               </div>
               {inputMonitoringPermission?.detail && !inputMonitoringPermission.trusted && (
@@ -780,10 +778,7 @@ function SettingsView({
 
             <article className="dictation-section">
               <div className="dictation-section-header">
-                <div>
-                  <p className="dictation-section-kicker">輸出</p>
-                  <h3 className="dictation-section-title">決定文字最後長什麼樣</h3>
-                </div>
+                <h3 className="dictation-section-title">輸出</h3>
               </div>
               <div className="dictation-inline-grid">
                 <label>
@@ -995,10 +990,7 @@ function SettingsView({
           <div className="dictation-flow-grid">
             <article className="dictation-section dictation-section-primary">
               <div className="dictation-section-header">
-                <div>
-                  <p className="dictation-section-kicker">來源</p>
-                  <h3 className="dictation-section-title">決定要聽哪裡、翻成什麼</h3>
-                </div>
+                <h3 className="dictation-section-title">來源</h3>
               </div>
               <label>
                 輸入裝置（麥克風）
@@ -1068,10 +1060,7 @@ function SettingsView({
 
             <article className="dictation-section">
               <div className="dictation-section-header">
-                <div>
-                  <p className="dictation-section-kicker">顯示</p>
-                  <h3 className="dictation-section-title">決定字幕看起來怎麼樣</h3>
-                </div>
+                <h3 className="dictation-section-title">顯示</h3>
               </div>
               <button className={overlaySuppressedLocal ? 'secondary' : ''} onClick={() => {
                 if (overlaySuppressedLocal) {
