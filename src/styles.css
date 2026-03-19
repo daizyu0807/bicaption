@@ -597,6 +597,16 @@ button:disabled {
     0 6px 14px rgba(81, 139, 255, 0.18);
 }
 
+.dictation-float-processing .dictation-float-orb::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 999px;
+  border: 2px solid rgba(93, 157, 255, 0.22);
+  border-top-color: rgba(255, 255, 255, 0.92);
+  animation: dictation-processing-spin 0.95s linear infinite;
+}
+
 .dictation-float-done .dictation-float-orb {
   background:
     radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.36), transparent 24%),
@@ -619,7 +629,7 @@ button:disabled {
 }
 
 .dictation-float-processing .dictation-float-wave {
-  border-color: rgba(139, 199, 255, 0.3);
+  display: none;
 }
 
 .dictation-float-done .dictation-float-wave {
@@ -660,6 +670,37 @@ button:disabled {
 .dictation-float-bars span:nth-child(4) {
   height: 8px;
   animation-delay: 0.36s;
+}
+
+.dictation-float-processing .dictation-float-bars {
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  gap: 2px;
+}
+
+.dictation-float-processing .dictation-float-bars span {
+  width: 3px;
+  height: 3px !important;
+  border-radius: 999px;
+  background: rgba(9, 12, 17, 0.76);
+  animation: dictation-processing-dots 0.9s ease-in-out infinite;
+}
+
+.dictation-float-processing .dictation-float-bars span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.dictation-float-processing .dictation-float-bars span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.dictation-float-processing .dictation-float-bars span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+.dictation-float-processing .dictation-float-bars span:nth-child(4) {
+  animation-delay: 0.42s;
 }
 
 .dictation-float-done .dictation-float-bars span {
@@ -830,6 +871,26 @@ button:disabled {
   }
   50% {
     transform: scaleY(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes dictation-processing-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dictation-processing-dots {
+  0%, 100% {
+    transform: translateY(0) scale(0.82);
+    opacity: 0.42;
+  }
+  50% {
+    transform: translateY(-1px) scale(1.18);
     opacity: 1;
   }
 }
