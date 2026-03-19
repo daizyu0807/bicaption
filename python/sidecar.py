@@ -873,6 +873,19 @@ class SenseVoiceTranscriber:
 
         return self._process_vad_queue(base_time_ms)
 
+    def flush(self, base_time_ms: int) -> list[TranscriptChunk]:
+        if self._vad_buf.size > 0:
+            padded = np.pad(self._vad_buf, (0, max(0, self.vad_window - self._vad_buf.size % self.vad_window) % self.vad_window))
+            while padded.size > 0:
+                chunk = padded[:self.vad_window]
+                padded = padded[self.vad_window:]
+                self.vad.accept_waveform(chunk)
+            self._vad_buf = np.zeros(0, dtype=np.float32)
+        silence_windows = int(math.ceil(0.35 * SAMPLE_RATE / self.vad_window))
+        for _ in range(max(1, silence_windows)):
+            self.vad.accept_waveform(np.zeros(self.vad_window, dtype=np.float32))
+        return self._process_vad_queue(base_time_ms)
+
 
 class WhisperTinyEnTranscriber:
     """VAD + Whisper tiny.en offline recognizer optimized for English."""
@@ -946,6 +959,19 @@ class WhisperTinyEnTranscriber:
             self._vad_buf = self._vad_buf[self.vad_window:]
             self.vad.accept_waveform(chunk)
 
+        return self._process_vad_queue(base_time_ms)
+
+    def flush(self, base_time_ms: int) -> list[TranscriptChunk]:
+        if self._vad_buf.size > 0:
+            padded = np.pad(self._vad_buf, (0, max(0, self.vad_window - self._vad_buf.size % self.vad_window) % self.vad_window))
+            while padded.size > 0:
+                chunk = padded[:self.vad_window]
+                padded = padded[self.vad_window:]
+                self.vad.accept_waveform(chunk)
+            self._vad_buf = np.zeros(0, dtype=np.float32)
+        silence_windows = int(math.ceil(0.35 * SAMPLE_RATE / self.vad_window))
+        for _ in range(max(1, silence_windows)):
+            self.vad.accept_waveform(np.zeros(self.vad_window, dtype=np.float32))
         return self._process_vad_queue(base_time_ms)
 
 
@@ -1025,6 +1051,19 @@ class WhisperSmallTranscriber:
 
         return self._process_vad_queue(base_time_ms)
 
+    def flush(self, base_time_ms: int) -> list[TranscriptChunk]:
+        if self._vad_buf.size > 0:
+            padded = np.pad(self._vad_buf, (0, max(0, self.vad_window - self._vad_buf.size % self.vad_window) % self.vad_window))
+            while padded.size > 0:
+                chunk = padded[:self.vad_window]
+                padded = padded[self.vad_window:]
+                self.vad.accept_waveform(chunk)
+            self._vad_buf = np.zeros(0, dtype=np.float32)
+        silence_windows = int(math.ceil(0.35 * SAMPLE_RATE / self.vad_window))
+        for _ in range(max(1, silence_windows)):
+            self.vad.accept_waveform(np.zeros(self.vad_window, dtype=np.float32))
+        return self._process_vad_queue(base_time_ms)
+
 
 class ZipformerKoreanTranscriber:
     """VAD + Zipformer transducer optimized for Korean."""
@@ -1097,6 +1136,19 @@ class ZipformerKoreanTranscriber:
             self._vad_buf = self._vad_buf[self.vad_window:]
             self.vad.accept_waveform(chunk)
 
+        return self._process_vad_queue(base_time_ms)
+
+    def flush(self, base_time_ms: int) -> list[TranscriptChunk]:
+        if self._vad_buf.size > 0:
+            padded = np.pad(self._vad_buf, (0, max(0, self.vad_window - self._vad_buf.size % self.vad_window) % self.vad_window))
+            while padded.size > 0:
+                chunk = padded[:self.vad_window]
+                padded = padded[self.vad_window:]
+                self.vad.accept_waveform(chunk)
+            self._vad_buf = np.zeros(0, dtype=np.float32)
+        silence_windows = int(math.ceil(0.35 * SAMPLE_RATE / self.vad_window))
+        for _ in range(max(1, silence_windows)):
+            self.vad.accept_waveform(np.zeros(self.vad_window, dtype=np.float32))
         return self._process_vad_queue(base_time_ms)
 
 
@@ -1670,6 +1722,17 @@ class SidecarApp:
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.5)
         self.thread = None
+        if self.config is not None and self.config.mode == "dictation" and self.transcriber is not None:
+            flush = getattr(self.transcriber, "flush", None)
+            if callable(flush):
+                flush_base_ms = self.dictation_last_update_ms or self.dictation_started_at_ms or now_ms()
+                try:
+                    flushed_chunks = flush(flush_base_ms)
+                    for chunk in flushed_chunks:
+                        self._emit_final_chunk(chunk)
+                    trace_debug(f"dictation flush emitted chunks={len(flushed_chunks)} session={self.config.session_id}")
+                except Exception as error:
+                    trace_debug(f"dictation flush failed session={self.config.session_id} error={error}")
         if self.capture is not None:
             self.capture.stop()
             self.capture = None
