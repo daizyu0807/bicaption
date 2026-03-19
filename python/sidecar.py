@@ -591,7 +591,7 @@ class UnavailableRewriteProvider(DictationRewriteProvider):
 class LocalLlmRewriteProvider(DictationRewriteProvider):
     backend = "local-llm"
 
-    def __init__(self, script_path: str, timeout_seconds: float = 2.5) -> None:
+    def __init__(self, script_path: str, timeout_seconds: float = 8.0) -> None:
         self.script_path = script_path
         self.timeout_seconds = timeout_seconds
 

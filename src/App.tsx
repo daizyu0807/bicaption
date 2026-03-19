@@ -51,9 +51,9 @@ function OverlayView({
   const dictationPrompt = getDictationPrompt(dictationState, showDictationResult);
   const effectiveDictationPrompt = overlayMode === 'dictation'
     ? dictationPrompt ?? {
-      tone: 'live' as const,
-      title: '正在聽你說',
-      detail: '按住快捷鍵說話，放開後送出辨識。',
+      tone: 'processing' as const,
+      title: '正在整理語音',
+      detail: '放開後會先整理語音，再輸出結果。',
     }
     : dictationPrompt;
   const isDictationOverlayMode = overlayMode === 'dictation';

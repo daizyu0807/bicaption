@@ -24,7 +24,7 @@ def run_custom_runner(payload: dict[str, Any], command: str) -> dict[str, Any]:
         input=json.dumps(payload, ensure_ascii=False),
         capture_output=True,
         text=True,
-        timeout=float(os.environ.get("BICAPTION_LOCAL_LLM_TIMEOUT_SECONDS", "2.5")),
+        timeout=float(os.environ.get("BICAPTION_LOCAL_LLM_TIMEOUT_SECONDS", "8")),
         check=False,
     )
     if result.returncode != 0:
