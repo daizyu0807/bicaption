@@ -251,7 +251,7 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionCo
     mode,
     sessionId: randomUUID(),
     deviceId: isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
-    outputDeviceId: settings.outputDeviceId,
+    outputDeviceId: isDictation ? '' : settings.outputDeviceId,
     sourceLang: isDictation ? settings.dictationSourceLang : settings.sourceLang,
     targetLang: settings.targetLang,
     sttModel: isDictation ? settings.dictationSttModel : settings.sttModel,

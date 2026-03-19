@@ -1605,6 +1605,7 @@ class SidecarApp:
         self.dictation_parts: list[str] = []
         self.dictation_started_at_ms = 0
         self.dictation_last_update_ms = 0
+        self.dictation_max_input_level = 0.0
         self.translation_queue: queue.Queue[tuple[TranscriptChunk, SessionConfig]] = queue.Queue()
         self.translation_worker = threading.Thread(target=self._translation_loop, daemon=True)
         self.translation_worker.start()
@@ -1665,6 +1666,7 @@ class SidecarApp:
             self.dictation_parts = []
             self.dictation_started_at_ms = now_ms()
             self.dictation_last_update_ms = self.dictation_started_at_ms
+            self.dictation_max_input_level = 0.0
             emit(build_dictation_state_event("recording", "Dictation session started"))
             trace_debug(f"dictation recording session={self.config.session_id}")
         self.stop_event.clear()
@@ -1730,7 +1732,10 @@ class SidecarApp:
                     flushed_chunks = flush(flush_base_ms)
                     for chunk in flushed_chunks:
                         self._emit_final_chunk(chunk)
-                    trace_debug(f"dictation flush emitted chunks={len(flushed_chunks)} session={self.config.session_id}")
+                    trace_debug(
+                        f"dictation flush emitted chunks={len(flushed_chunks)} session={self.config.session_id} "
+                        f"max_input_level={self.dictation_max_input_level:.4f}"
+                    )
                 except Exception as error:
                     trace_debug(f"dictation flush failed session={self.config.session_id} error={error}")
         if self.capture is not None:
@@ -1833,6 +1838,8 @@ class SidecarApp:
                 "processingLagMs": 0,
                 "queueDepth": self.capture.queue.qsize(),
             })
+            if self.config.mode == "dictation":
+                self.dictation_max_input_level = max(self.dictation_max_input_level, self.capture.level)
 
             if incoming.size == 0:
                 continue
