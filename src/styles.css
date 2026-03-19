@@ -155,8 +155,10 @@ textarea {
 }
 
 .bottom-bar button {
-  flex: 1;
-  padding: 7px 14px;
+  flex: 0 0 auto;
+  min-width: 96px;
+  padding: 8px 14px;
+  font-size: 0.76rem;
 }
 
 .panel {
@@ -294,7 +296,7 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .subtitle-workspace .dictation-feature-toggle {
