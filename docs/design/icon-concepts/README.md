@@ -1,6 +1,20 @@
 # BiCaption Icon Concepts
 
-Three first-pass icon directions for BiCaption.
+Two rounds of icon directions for BiCaption.
+
+## Minimal set
+
+- `minimal-wave-captions.svg`
+  - Simplest "subtitle + wave" read
+  - Best balance between product meaning and simplicity
+- `minimal-subtitle-pulse.svg`
+  - Darker, more technical
+  - Subtitle bars with a pulse-like center stroke
+- `minimal-wave-window.svg`
+  - Most literal window metaphor
+  - Closest to an app overlay abstraction
+
+## First-pass set
 
 - `speech-orb.svg`
   - Dictation-first

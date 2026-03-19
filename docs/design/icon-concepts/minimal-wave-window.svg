@@ -1,0 +1,20 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="132" y1="112" x2="904" y2="912" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8F4EC"/>
+      <stop offset="1" stop-color="#E7DED0"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="360" y1="380" x2="670" y2="650" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EEA14E"/>
+      <stop offset="1" stop-color="#D1611A"/>
+    </linearGradient>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="208" fill="url(#bg)"/>
+  <rect x="192" y="248" width="640" height="528" rx="118" fill="#18212C"/>
+  <rect x="242" y="310" width="540" height="404" rx="74" fill="#FFF8EF"/>
+  <rect x="304" y="398" width="144" height="24" rx="12" fill="#1A2430"/>
+  <rect x="476" y="398" width="244" height="24" rx="12" fill="#1A2430" fill-opacity="0.36"/>
+  <path d="M316 554C360.667 510.667 405.333 510.667 450 554C494.667 597.333 539.333 597.333 584 554C628.667 510.667 673.333 510.667 718 554" stroke="url(#wave)" stroke-width="40" stroke-linecap="round"/>
+  <rect x="304" y="632" width="216" height="24" rx="12" fill="#1A2430"/>
+  <rect x="548" y="632" width="172" height="24" rx="12" fill="#1A2430" fill-opacity="0.36"/>
+</svg>
