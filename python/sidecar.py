@@ -107,6 +107,8 @@ def build_dictation_final_event(
     dictionary_enabled: bool = False,
     dictionary_text: str = "",
     max_rewrite_expansion_ratio: float = 1.3,
+    local_llm_model: str = "",
+    local_llm_runner: str = "",
 ) -> dict[str, Any]:
     transcript = normalize_text(" ".join(transcript_parts))
     if convert_s2t and opencc_s2t is not None and transcript:
@@ -126,6 +128,8 @@ def build_dictation_final_event(
             output_style,
             max_rewrite_expansion_ratio,
             protected_terms,
+            local_model="",
+            local_runner="",
         )
         final_text = rules_result.text
         rewrite_backend = rules_result.backend
@@ -141,6 +145,8 @@ def build_dictation_final_event(
                 output_style,
                 max_rewrite_expansion_ratio,
                 protected_terms,
+                local_model=local_llm_model,
+                local_runner=local_llm_runner,
             )
             rewrite_backend = provider_result.backend
             if provider_result.applied:
@@ -346,6 +352,8 @@ class SessionConfig:
     dictation_output_style: str = "literal"
     dictation_dictionary_text: str = ""
     dictation_max_rewrite_expansion_ratio: float = 1.3
+    dictation_local_llm_model: str = ""
+    dictation_local_llm_runner: str = ""
 
 
 @dataclass
@@ -471,6 +479,8 @@ class DictationRewriteProvider:
         output_style: str,
         max_expansion_ratio: float,
         protected_terms: list[str],
+        local_model: str = "",
+        local_runner: str = "",
     ) -> DictationRewriteResult:
         return DictationRewriteResult(text=text, backend=self.backend, applied=False)
 
@@ -486,6 +496,8 @@ class RulesRewriteProvider(DictationRewriteProvider):
         output_style: str,
         max_expansion_ratio: float,
         protected_terms: list[str],
+        local_model: str = "",
+        local_runner: str = "",
     ) -> DictationRewriteResult:
         candidate = apply_dictation_rules_rewrite(text)
         accepted, fallback_reason = should_accept_rewrite(
@@ -521,6 +533,8 @@ class UnavailableRewriteProvider(DictationRewriteProvider):
         output_style: str,
         max_expansion_ratio: float,
         protected_terms: list[str],
+        local_model: str = "",
+        local_runner: str = "",
     ) -> DictationRewriteResult:
         return DictationRewriteResult(
             text=text,
@@ -545,6 +559,8 @@ class LocalLlmRewriteProvider(DictationRewriteProvider):
         output_style: str,
         max_expansion_ratio: float,
         protected_terms: list[str],
+        local_model: str = "",
+        local_runner: str = "",
     ) -> DictationRewriteResult:
         if not os.path.exists(self.script_path):
             return DictationRewriteResult(
@@ -567,6 +583,8 @@ class LocalLlmRewriteProvider(DictationRewriteProvider):
             "sourceLang": source_lang,
             "outputStyle": output_style,
             "protectedTerms": protected_terms,
+            "model": local_model,
+            "runner": local_runner,
         }
         try:
             result = subprocess.run(
@@ -1554,6 +1572,8 @@ class SidecarApp:
             dictation_output_style=str(payload.get("dictationOutputStyle", "literal")),
             dictation_dictionary_text=str(payload.get("dictationDictionaryText", "")),
             dictation_max_rewrite_expansion_ratio=float(payload.get("dictationMaxRewriteExpansionRatio", 1.3)),
+            dictation_local_llm_model=str(payload.get("dictationLocalLlmModel", "")),
+            dictation_local_llm_runner=str(payload.get("dictationLocalLlmRunner", "")),
         )
         set_emit_context(self.config.mode, self.config.session_id)
         if self.config.mode == "dictation":
@@ -1640,6 +1660,8 @@ class SidecarApp:
                     dictionary_enabled=self.config.dictation_dictionary_enabled,
                     dictionary_text=self.config.dictation_dictionary_text,
                     max_rewrite_expansion_ratio=self.config.dictation_max_rewrite_expansion_ratio,
+                    local_llm_model=self.config.dictation_local_llm_model,
+                    local_llm_runner=self.config.dictation_local_llm_runner,
                 )
             )
         emit({"type": "session_stopped_ack"})

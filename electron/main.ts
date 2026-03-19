@@ -251,6 +251,8 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionCo
     dictationOutputStyle: isDictation ? settings.dictationOutputStyle : undefined,
     dictationDictionaryText: isDictation ? settings.dictationDictionaryText : undefined,
     dictationMaxRewriteExpansionRatio: isDictation ? settings.dictationMaxRewriteExpansionRatio : undefined,
+    dictationLocalLlmModel: isDictation ? settings.dictationLocalLlmModel : undefined,
+    dictationLocalLlmRunner: isDictation ? settings.dictationLocalLlmRunner : undefined,
   };
 }
 

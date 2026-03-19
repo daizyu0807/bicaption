@@ -42,14 +42,34 @@ def run_mlx(payload: dict[str, Any], model_path: str) -> dict[str, Any]:
     prompt = str(payload.get("prompt", "")).strip()
     if not prompt:
         raise RuntimeError("empty prompt")
+    if hasattr(tokenizer, "apply_chat_template"):
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a deterministic dictation cleanup engine. Return only the rewritten text.",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ]
+        try:
+            prompt = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except TypeError:
+            prompt = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+            )
     max_tokens = int(os.environ.get("BICAPTION_LOCAL_LLM_MAX_TOKENS", "192"))
-    temperature = float(os.environ.get("BICAPTION_LOCAL_LLM_TEMPERATURE", "0"))
     generated = generate(
         model,
         tokenizer,
         prompt=prompt,
         max_tokens=max_tokens,
-        temp=temperature,
         verbose=False,
     )
     if isinstance(generated, str):
@@ -68,7 +88,7 @@ def main() -> int:
     except json.JSONDecodeError as exc:
         return fail(f"invalid json: {exc}")
 
-    custom_runner = os.environ.get("BICAPTION_LOCAL_LLM_RUNNER", "").strip()
+    custom_runner = str(payload.get("runner", "")).strip() or os.environ.get("BICAPTION_LOCAL_LLM_RUNNER", "").strip()
     if custom_runner:
         try:
             response = run_custom_runner(payload, custom_runner)
@@ -79,7 +99,7 @@ def main() -> int:
         sys.stdout.write(json.dumps(response, ensure_ascii=False))
         return 0
 
-    model_path = os.environ.get("BICAPTION_LOCAL_LLM_MODEL", "").strip()
+    model_path = str(payload.get("model", "")).strip() or os.environ.get("BICAPTION_LOCAL_LLM_MODEL", "").strip()
     if not model_path:
         return fail("model missing: set BICAPTION_LOCAL_LLM_MODEL or BICAPTION_LOCAL_LLM_RUNNER")
 

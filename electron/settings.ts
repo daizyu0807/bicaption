@@ -35,6 +35,8 @@ export const defaultSettings: AppSettings = {
   dictationOutputStyle: 'polished',
   dictationMaxRewriteExpansionRatio: 1.3,
   dictationDictionaryText: '',
+  dictationLocalLlmModel: 'mlx-community/Qwen2.5-0.5B-Instruct-4bit',
+  dictationLocalLlmRunner: '',
   saveEnabled: false,
   saveDirectory: '',
   overlayOpacity: 0.9,

@@ -351,6 +351,8 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
     dictationOutputStyle: isDictation ? settings.dictationOutputStyle : undefined,
     dictationDictionaryText: isDictation ? settings.dictationDictionaryText : undefined,
     dictationMaxRewriteExpansionRatio: isDictation ? settings.dictationMaxRewriteExpansionRatio : undefined,
+    dictationLocalLlmModel: isDictation ? settings.dictationLocalLlmModel : undefined,
+    dictationLocalLlmRunner: isDictation ? settings.dictationLocalLlmRunner : undefined,
   };
 }
 
@@ -869,6 +871,28 @@ function SettingsView({
             />
           </label>
           <p className="model-hint">每行一條，格式為 <code>{'spoken => canonical'}</code>。左邊可寫常見誤轉或口語說法。</p>
+          {draft.dictationRewriteMode === 'rules-and-local-llm' && (
+            <>
+              <label>
+                本地模型 ID / 路徑
+                <input
+                  type="text"
+                  value={draft.dictationLocalLlmModel}
+                  onChange={(event) => setDraft({ ...draft, dictationLocalLlmModel: event.target.value })}
+                  placeholder="mlx-community/Qwen2.5-0.5B-Instruct-4bit"
+                />
+              </label>
+              <label>
+                自訂 runner（可選）
+                <input
+                  type="text"
+                  value={draft.dictationLocalLlmRunner}
+                  onChange={(event) => setDraft({ ...draft, dictationLocalLlmRunner: event.target.value })}
+                  placeholder="python3 /path/to/your-runner.py"
+                />
+              </label>
+            </>
+          )}
           <label>
             輸出方式
             <select
@@ -886,7 +910,7 @@ function SettingsView({
             </p>
           )}
           {draft.dictationRewriteMode === 'rules-and-local-llm' && (
-            <p className="model-hint">本地 LLM 會先吃 dictionary 校正結果，再依保守 prompt 做書面化；prompt contract 已對齊 SayIt 的「口語轉可直接貼上文字」方向。要啟用 MLX，先設定 `BICAPTION_LOCAL_LLM_MODEL`；若你有自訂 runner，也可設定 `BICAPTION_LOCAL_LLM_RUNNER`。</p>
+            <p className="model-hint">本地 LLM 會先吃 dictionary 校正結果，再依保守 prompt 做書面化；prompt contract 已對齊 SayIt 的「口語轉可直接貼上文字」方向。預設模型是 `mlx-community/Qwen2.5-0.5B-Instruct-4bit`。</p>
           )}
           <p className="model-hint">按住快捷鍵開始語音輸入，放開後結束並輸出文字。</p>
         </article>

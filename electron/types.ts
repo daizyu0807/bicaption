@@ -36,6 +36,8 @@ export interface CaptionConfig {
   dictationOutputStyle?: 'literal' | 'polished';
   dictationDictionaryText?: string;
   dictationMaxRewriteExpansionRatio?: number;
+  dictationLocalLlmModel?: string;
+  dictationLocalLlmRunner?: string;
 }
 
 interface SessionScopedEvent {
@@ -164,6 +166,8 @@ export interface AppSettings {
   dictationOutputStyle: 'literal' | 'polished';
   dictationMaxRewriteExpansionRatio: number;
   dictationDictionaryText: string;
+  dictationLocalLlmModel: string;
+  dictationLocalLlmRunner: string;
   saveEnabled: boolean;
   saveDirectory: string;
   overlayOpacity: number;
