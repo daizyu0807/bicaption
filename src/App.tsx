@@ -54,16 +54,6 @@ function OverlayView({
     }
     : dictationPrompt;
   const isDictationOverlayMode = overlayMode === 'dictation';
-  const compactDictationLabel = dictationPrompt?.tone === 'done'
-    ? '已完成'
-    : dictationPrompt?.tone === 'processing'
-      ? '整理中'
-      : '錄音中';
-  const compactDictationDetail = dictationPrompt?.tone === 'done'
-    ? dictationState.finalText
-    : dictationPrompt?.tone === 'processing'
-      ? '正在轉成可貼上的文字'
-      : '放開快捷鍵就會送出';
 
   useEffect(() => {
     const el = stackRef.current;
@@ -126,25 +116,16 @@ function OverlayView({
     return (
       <main className="overlay-window overlay-window-dictation" style={overlayStyle}>
         <section className={`dictation-float-shell dictation-float-shell-${effectiveDictationPrompt.tone}`}>
-          <button className="dictation-float-settings no-drag" onClick={closeOverlayAndFocusSettings} aria-label="Open settings">
-            •••
-          </button>
-          <div className={`dictation-float dictation-float-${effectiveDictationPrompt.tone} no-drag`}>
-            <span className="dictation-float-orb" aria-hidden="true">
-              <span className="dictation-float-wave dictation-float-wave-a" />
-              <span className="dictation-float-wave dictation-float-wave-b" />
-              <span className="dictation-float-bars">
-                <span />
-                <span />
-                <span />
-                <span />
-              </span>
+          <button className={`dictation-float-orb dictation-float-${effectiveDictationPrompt.tone} no-drag`} onClick={closeOverlayAndFocusSettings} aria-label={effectiveDictationPrompt.title}>
+            <span className="dictation-float-wave dictation-float-wave-a" />
+            <span className="dictation-float-wave dictation-float-wave-b" />
+            <span className="dictation-float-bars" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
             </span>
-            <div className="dictation-float-copy">
-              <p className="dictation-float-label">{compactDictationLabel}</p>
-              <p className="dictation-float-detail">{compactDictationDetail}</p>
-            </div>
-          </div>
+          </button>
         </section>
       </main>
     );

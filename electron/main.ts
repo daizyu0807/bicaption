@@ -30,6 +30,7 @@ let activeSessionId: string | null = null;
 let sessionTransitionPromise: Promise<void> | null = null;
 let hotkeyListenerMode: 'dictation' | 'test' | 'idle' = 'idle';
 let pendingDictationStop = false;
+let dictationHotkeyPressed = false;
 let pendingDictationPasteTarget: { appName: string; windowTitle: string | null } | null = null;
 let dictationOverlayHideTimeout: NodeJS.Timeout | null = null;
 let overlayMode: 'hidden' | 'subtitle' | 'dictation' = 'hidden';
@@ -271,6 +272,7 @@ function clearActiveSession(sessionId?: string) {
   if (!sessionId || !activeSessionId || sessionId === activeSessionId) {
     activeSessionMode = null;
     activeSessionId = null;
+    pendingDictationStop = false;
     pendingDictationPasteTarget = null;
   }
 }
@@ -299,9 +301,6 @@ function runSessionTransition(task: () => Promise<void>) {
 async function startDictationFromHotkey() {
   showDictationOverlay();
   await runSessionTransition(async () => {
-    if (activeSessionMode === 'dictation') {
-      return;
-    }
     if (activeSessionMode) {
       await stopActiveSession();
     }
@@ -375,8 +374,8 @@ function showDictationOverlay() {
   if (overlayWindow) {
     subtitleOverlayBoundsCache = overlayWindow.getBounds();
     const current = overlayWindow.getBounds();
-    const width = 152;
-    const height = 132;
+    const width = 84;
+    const height = 84;
     const x = Math.round(current.x + (current.width - width) / 2);
     const y = Math.round(current.y + current.height - height);
     overlayWindow.setBounds({ x, y, width, height });
@@ -620,10 +619,17 @@ function forwardHotkeyEvent(event: DictationHotkeyEvent) {
     return;
   }
   if (event.type === 'hotkey_down') {
+    if (dictationHotkeyPressed) {
+      return;
+    }
+    dictationHotkeyPressed = true;
     showDictationOverlay();
     void startDictationFromHotkey();
   } else if (event.type === 'hotkey_up') {
+    dictationHotkeyPressed = false;
     void stopDictationFromHotkey();
+  } else if (event.type === 'listener_stopped' || event.type === 'error') {
+    dictationHotkeyPressed = false;
   }
 }
 
