@@ -821,7 +821,7 @@ function SettingsView({
               <option value="polished">潤飾後</option>
             </select>
           </label>
-          <p className="model-hint">規則整理會固定啟用。若選「潤飾後」，系統會先套用 dictionary 與 rules，再依設定決定是否加上本地 LLM。</p>
+          <p className="model-hint">規則整理會固定啟用。選「潤飾後」但未開啟本地 LLM 時，仍然只會輸出 rules-only 的結果，不會做 LLM 改寫。</p>
           <label className="toggle-row">
             <input
               type="checkbox"
@@ -832,7 +832,7 @@ function SettingsView({
                 dictationCloudEnhancementEnabled: false,
               })}
             />
-            啟用本地 LLM 潤稿
+            啟用本地 LLM 潤稿（規則整理固定啟用）
           </label>
           <label className="toggle-row">
             <input
@@ -899,7 +899,7 @@ function SettingsView({
           <h2>最近一次輸入結果</h2>
           <div className="dictation-summary-grid">
             <div className="hotkey-event-box">
-              <span className="hotkey-event-label">整理 backend</span>
+              <span className="hotkey-event-label">本次潤稿 backend</span>
               <span className="hotkey-event-value">{getRewriteBackendLabel(dictationViewState.rewriteBackend)}</span>
             </div>
             <div className="hotkey-event-box">
