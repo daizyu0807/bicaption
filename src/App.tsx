@@ -468,6 +468,8 @@ function SettingsView({
 }) {
   const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation'>('subtitle');
   const [draft, setDraft] = useState(settings);
+  const [dictationAdvancedOpen, setDictationAdvancedOpen] = useState(false);
+  const [dictationDiagnosticsOpen, setDictationDiagnosticsOpen] = useState(false);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
   const [overlaySuppressedLocal, setOverlaySuppressedLocal] = useState(false);
@@ -481,6 +483,16 @@ function SettingsView({
   const translationOn = isTranslationEnabled(draft);
   const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
   const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
+  const localLlmEnabled = draft.dictationRewriteMode === 'rules-and-local-llm';
+  const dictationOutputLabel = draft.dictationOutputStyle === 'polished' ? '潤飾後文字' : '原文逐字稿';
+  const dictationPermissionReady = Boolean(accessibilityPermission?.trusted) && Boolean(inputMonitoringPermission?.trusted);
+  const dictationDiagnosticsAvailable = Boolean(
+    dictationViewState.literalTranscript
+    || dictationViewState.dictionaryText
+    || dictationViewState.finalText
+    || dictationViewState.fallbackReason
+    || dictationViewState.outputStatus,
+  );
   const modelReadyMap: Record<string, boolean> = {
     sensevoice: localModelStatus?.sensevoice ?? false,
     'apple-stt': true,  // No model download needed — uses macOS built-in
@@ -641,296 +653,370 @@ function SettingsView({
         )}
 
         {activeSettingsTab === 'dictation' && (
-        <div className="dictation-grid settings-content-grid">
-        <article className="panel panel-compact">
-          <h2>語音輸入快捷鍵</h2>
-          <label>
-            輸入裝置（麥克風）
-            <select
-              value={draft.dictationDeviceId}
-              onChange={(event) => setDraft({ ...draft, dictationDeviceId: event.target.value })}
-            >
-              {inputDevices.map((device) => (
-                <option key={device.id} value={device.id}>
-                  {device.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="dictation-summary-grid">
-            <div className="hotkey-event-box">
-              <span className="hotkey-event-label">快捷鍵</span>
-              <span className="hotkey-event-value">{getDictationHotkeyLabel(hotkeyBinding)}</span>
+        <div className="dictation-workspace settings-content-grid">
+          <article className="dictation-hero">
+            <div className="dictation-hero-copy">
+              <p className="dictation-kicker">Voice Dictation</p>
+              <h2 className="dictation-hero-title">把語音輸入縮成幾個必要選擇。</h2>
+              <p className="dictation-hero-text">按住快捷鍵說話，放開後直接輸出文字。規則整理固定啟用，本地 LLM 只在你需要更自然的文字時介入。</p>
             </div>
-          </div>
-          {hotkeyValidation.error && <p className="error-text">{hotkeyValidation.error}</p>}
-          {!hotkeyValidation.error && hotkeyValidation.warning && <p className="model-hint">{hotkeyValidation.warning}</p>}
-          <div className="form-row-2">
-            <label>
-              Hotkey key
-              <select
-                value={draft.dictationHotkey.keyCode}
-                onChange={(event) => {
-                  const keyCode = Number(event.target.value);
-                  setDraft({
-                    ...draft,
-                    dictationHotkey: {
-                      ...draft.dictationHotkey,
-                      keyCode,
-                      modifiers: [59, 63].includes(keyCode) ? [] : draft.dictationHotkey.modifiers,
-                    },
-                  });
-                }}
-              >
-                <option value="59">Hold Ctrl</option>
-                <option value="63">Hold Fn</option>
-                <option value="49">Space</option>
-                <option value="36">Return</option>
-              </select>
-            </label>
-            <label>
-              快捷鍵組合鍵
-              <div className="modifier-grid">
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={draft.dictationHotkey.modifiers.includes('cmd')}
-                    disabled={modifierOnlyHotkey}
-                    onChange={(event) => toggleHotkeyModifier('cmd', event.target.checked)}
-                  />
-                  Cmd
+            <div className="dictation-hero-badges">
+              <div className="dictation-stat-chip">
+                <span className="dictation-stat-label">快捷鍵</span>
+                <strong>{getDictationHotkeyLabel(hotkeyBinding)}</strong>
+              </div>
+              <div className="dictation-stat-chip">
+                <span className="dictation-stat-label">輸出風格</span>
+                <strong>{dictationOutputLabel}</strong>
+              </div>
+              <div className={`dictation-status-pill ${localLlmEnabled ? 'is-llm' : 'is-rules'}`}>
+                {localLlmEnabled ? '本地 LLM 已開啟' : '規則整理模式'}
+              </div>
+              <div className={`dictation-status-pill ${dictationPermissionReady ? 'is-ready' : 'is-warning'}`}>
+                {dictationPermissionReady ? '權限已就緒' : '仍需權限設定'}
+              </div>
+            </div>
+          </article>
+
+          <div className="dictation-flow-grid">
+            <article className="dictation-section dictation-section-primary">
+              <div className="dictation-section-header">
+                <div>
+                  <p className="dictation-section-kicker">啟動</p>
+                  <h3 className="dictation-section-title">決定怎麼開始說話</h3>
+                  <p className="dictation-section-copy">先把裝置、快捷鍵和權限調好，這是每天都會碰到的設定。</p>
+                </div>
+              </div>
+              <div className="dictation-inline-grid">
+                <label>
+                  輸入裝置
+                  <select
+                    value={draft.dictationDeviceId}
+                    onChange={(event) => setDraft({ ...draft, dictationDeviceId: event.target.value })}
+                  >
+                    {inputDevices.map((device) => (
+                      <option key={device.id} value={device.id}>
+                        {device.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={draft.dictationHotkey.modifiers.includes('shift')}
-                    disabled={modifierOnlyHotkey}
-                    onChange={(event) => toggleHotkeyModifier('shift', event.target.checked)}
-                  />
-                  Shift
-                </label>
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={draft.dictationHotkey.modifiers.includes('ctrl')}
-                    disabled={modifierOnlyHotkey}
-                    onChange={(event) => toggleHotkeyModifier('ctrl', event.target.checked)}
-                  />
-                  Ctrl
-                </label>
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={draft.dictationHotkey.modifiers.includes('alt')}
-                    disabled={modifierOnlyHotkey}
-                    onChange={(event) => toggleHotkeyModifier('alt', event.target.checked)}
-                  />
-                  Option
+                <label>
+                  快捷鍵
+                  <select
+                    value={draft.dictationHotkey.keyCode}
+                    onChange={(event) => {
+                      const keyCode = Number(event.target.value);
+                      setDraft({
+                        ...draft,
+                        dictationHotkey: {
+                          ...draft.dictationHotkey,
+                          keyCode,
+                          modifiers: [59, 63].includes(keyCode) ? [] : draft.dictationHotkey.modifiers,
+                        },
+                      });
+                    }}
+                  >
+                    <option value="59">Hold Ctrl</option>
+                    <option value="63">Hold Fn</option>
+                    <option value="49">Space</option>
+                    <option value="36">Return</option>
+                  </select>
                 </label>
               </div>
-            </label>
+              <label>
+                快捷鍵組合鍵
+                <div className="modifier-grid">
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={draft.dictationHotkey.modifiers.includes('cmd')}
+                      disabled={modifierOnlyHotkey}
+                      onChange={(event) => toggleHotkeyModifier('cmd', event.target.checked)}
+                    />
+                    Cmd
+                  </label>
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={draft.dictationHotkey.modifiers.includes('shift')}
+                      disabled={modifierOnlyHotkey}
+                      onChange={(event) => toggleHotkeyModifier('shift', event.target.checked)}
+                    />
+                    Shift
+                  </label>
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={draft.dictationHotkey.modifiers.includes('ctrl')}
+                      disabled={modifierOnlyHotkey}
+                      onChange={(event) => toggleHotkeyModifier('ctrl', event.target.checked)}
+                    />
+                    Ctrl
+                  </label>
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={draft.dictationHotkey.modifiers.includes('alt')}
+                      disabled={modifierOnlyHotkey}
+                      onChange={(event) => toggleHotkeyModifier('alt', event.target.checked)}
+                    />
+                    Option
+                  </label>
+                </div>
+              </label>
+              {modifierOnlyHotkey && <p className="model-hint">Modifier-only 模式會直接把所選按鍵當成 press-to-talk。</p>}
+              <div className="dictation-permission-card">
+                <div className="dictation-permission-row">
+                  <span className="dictation-permission-copy">Accessibility</span>
+                  <strong className={accessibilityPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
+                    {getPermissionLabel(accessibilityPermission, 'accessibility')}
+                  </strong>
+                </div>
+                <div className="dictation-permission-row">
+                  <span className="dictation-permission-copy">Input Monitoring</span>
+                  <strong className={inputMonitoringPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
+                    {getPermissionLabel(inputMonitoringPermission, 'input-monitoring')}
+                  </strong>
+                  <button
+                    className="secondary"
+                    disabled={Boolean(inputMonitoringPermission?.trusted)}
+                    onClick={async () => {
+                      setHotkeyTestError(null);
+                      try {
+                        const granted = await ensureInputMonitoringPermission();
+                        if (!granted) {
+                          setHotkeyTestError('Input Monitoring 設定已開啟。允許後若仍無法使用，請重新開啟 app。');
+                        }
+                      } catch (error) {
+                        setHotkeyTestError(error instanceof Error ? error.message : 'Failed to request Input Monitoring permission');
+                      }
+                    }}
+                  >
+                    前往授權
+                  </button>
+                </div>
+              </div>
+              {inputMonitoringPermission?.detail && !inputMonitoringPermission.trusted && (
+                <p className="error-text">{inputMonitoringPermission.detail}</p>
+              )}
+              {hotkeyValidation.error && <p className="error-text">{hotkeyValidation.error}</p>}
+              {!hotkeyValidation.error && hotkeyValidation.warning && <p className="model-hint">{hotkeyValidation.warning}</p>}
+              {hotkeyTestError && <p className="error-text">{hotkeyTestError}</p>}
+            </article>
+
+            <article className="dictation-section">
+              <div className="dictation-section-header">
+                <div>
+                  <p className="dictation-section-kicker">輸出</p>
+                  <h3 className="dictation-section-title">決定文字最後長什麼樣</h3>
+                  <p className="dictation-section-copy">把這裡想成輸出策略，不是工程參數。規則整理會永遠在，LLM 是額外加成。</p>
+                </div>
+              </div>
+              <div className="dictation-inline-grid">
+                <label>
+                  語音語言
+                  <select
+                    value={draft.dictationSourceLang}
+                    onChange={(event) => {
+                      const lang = event.target.value;
+                      const recommended = lang === 'auto' ? 'sensevoice' : draft.dictationSttModel === 'sensevoice' ? 'sensevoice' : 'apple-stt';
+                      setDraft({ ...draft, dictationSourceLang: lang, dictationSttModel: recommended });
+                    }}
+                  >
+                    <option value="auto">自動偵測</option>
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                  </select>
+                </label>
+                <label>
+                  輸出方式
+                  <select
+                    value={draft.dictationOutputAction}
+                    onChange={(event) => setDraft({ ...draft, dictationOutputAction: event.target.value as DictationOutputAction })}
+                  >
+                    <option value="copy">{getDictationOutputActionLabel('copy')}</option>
+                    <option value="paste">{getDictationOutputActionLabel('paste')}</option>
+                    <option value="copy-and-paste">{getDictationOutputActionLabel('copy-and-paste')}</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                輸出文字風格
+                <select
+                  value={draft.dictationOutputStyle}
+                  onChange={(event) => setDraft({ ...draft, dictationOutputStyle: event.target.value as AppSettings['dictationOutputStyle'] })}
+                >
+                  <option value="literal">原文</option>
+                  <option value="polished">潤飾後</option>
+                </select>
+              </label>
+              <label className="toggle-row dictation-feature-toggle">
+                <input
+                  type="checkbox"
+                  checked={localLlmEnabled}
+                  onChange={(event) => setDraft({
+                    ...draft,
+                    dictationRewriteMode: event.target.checked ? 'rules-and-local-llm' : 'rules',
+                    dictationCloudEnhancementEnabled: false,
+                  })}
+                />
+                <span>
+                  啟用本地 LLM 潤稿
+                  <small>會先套字典與規則，再交給本地模型做保守書面化。</small>
+                </span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={draft.dictationDictionaryEnabled}
+                  onChange={(event) => setDraft({ ...draft, dictationDictionaryEnabled: event.target.checked })}
+                />
+                啟用自訂字典
+              </label>
+              <label>
+                自訂字典
+                <textarea
+                  rows={5}
+                  value={draft.dictationDictionaryText}
+                  onChange={(event) => setDraft({ ...draft, dictationDictionaryText: event.target.value })}
+                  placeholder={'spoken => canonical\nchat g p t => ChatGPT\nbicaption => BiCaption'}
+                />
+              </label>
+              <p className="model-hint">每行一條，格式為 <code>{'spoken => canonical'}</code>。如果你常說產品名、人名或術語，優先在這裡修正。</p>
+              {draft.dictationOutputAction !== 'copy' && (
+                <p className="model-hint">自動貼上需要 Accessibility 權限。若貼上失敗，文字仍會保留在剪貼簿。</p>
+              )}
+            </article>
           </div>
-          {modifierOnlyHotkey && <p className="model-hint">Modifier-only mode uses press-to-talk directly on the selected key.</p>}
-          <div className="hotkey-permissions">
-            <div className="hotkey-permission-row">
-              <span className="hotkey-permission-label">Accessibility</span>
-              <span className={accessibilityPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
-                {getPermissionLabel(accessibilityPermission, 'accessibility')}
-              </span>
-              <span className="hotkey-permission-action-spacer" aria-hidden="true" />
-            </div>
-            <div className="hotkey-permission-row">
-              <span className="hotkey-permission-label">Input Monitoring</span>
-              <span className={inputMonitoringPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
-                {getPermissionLabel(inputMonitoringPermission, 'input-monitoring')}
-              </span>
+
+          <div className="dictation-detail-stack">
+            <article className="dictation-section dictation-section-collapsible">
               <button
-                className="secondary"
-                disabled={Boolean(inputMonitoringPermission?.trusted)}
-                onClick={async () => {
-                  setHotkeyTestError(null);
-                  try {
-                    const granted = await ensureInputMonitoringPermission();
-                    if (!granted) {
-                      setHotkeyTestError('Input Monitoring settings were opened. Enable the app there, then reopen the app if needed.');
-                    }
-                  } catch (error) {
-                    setHotkeyTestError(error instanceof Error ? error.message : 'Failed to request Input Monitoring permission');
-                  }
-                }}
+                className="dictation-collapse-toggle"
+                type="button"
+                onClick={() => setDictationAdvancedOpen((open) => !open)}
               >
-                申請
+                <span>
+                  <span className="dictation-section-kicker">進階</span>
+                  <strong>模型與辨識細節</strong>
+                </span>
+                <span>{dictationAdvancedOpen ? '收合' : '展開'}</span>
               </button>
-            </div>
-            {inputMonitoringPermission?.detail && !inputMonitoringPermission.trusted && (
-              <p className="error-text">{inputMonitoringPermission.detail}</p>
-            )}
+              {dictationAdvancedOpen && (
+                <div className="dictation-collapsible-body">
+                  <div className="dictation-inline-grid">
+                    <label>
+                      語音辨識引擎
+                      <select
+                        value={draft.dictationSttModel}
+                        onChange={(event) => setDraft({ ...draft, dictationSttModel: event.target.value })}
+                      >
+                        <option value="apple-stt">SFSpeechRecognizer</option>
+                        <option value="sensevoice">SenseVoice</option>
+                      </select>
+                    </label>
+                    <label>
+                      句尾停頓偵測（{draft.dictationEndpointMs}ms）
+                      <input
+                        type="range"
+                        min="600"
+                        max="2000"
+                        step="100"
+                        value={draft.dictationEndpointMs}
+                        onChange={(event) => setDraft({ ...draft, dictationEndpointMs: Number(event.target.value) })}
+                      />
+                    </label>
+                  </div>
+                  {draft.dictationSttModel === 'apple-stt' && (
+                    <p className="model-hint">SFSpeechRecognizer 不會做多語自動判斷。若你要中英混講或自動偵測，改用 SenseVoice。</p>
+                  )}
+                  {localLlmEnabled && (
+                    <>
+                      <label>
+                        本地模型 ID / 路徑
+                        <input
+                          type="text"
+                          value={draft.dictationLocalLlmModel}
+                          onChange={(event) => setDraft({ ...draft, dictationLocalLlmModel: event.target.value })}
+                          placeholder="mlx-community/Qwen2.5-0.5B-Instruct-4bit"
+                        />
+                      </label>
+                      <label>
+                        自訂 runner（可選）
+                        <input
+                          type="text"
+                          value={draft.dictationLocalLlmRunner}
+                          onChange={(event) => setDraft({ ...draft, dictationLocalLlmRunner: event.target.value })}
+                          placeholder="python3 /path/to/your-runner.py"
+                        />
+                      </label>
+                      <p className="model-hint">本地 LLM 會先吃 dictionary 校正結果，再依保守 prompt 做書面化；prompt contract 已對齊 SayIt 的方向。</p>
+                    </>
+                  )}
+                </div>
+              )}
+            </article>
+
+            <article className="dictation-section dictation-section-collapsible">
+              <button
+                className="dictation-collapse-toggle"
+                type="button"
+                onClick={() => setDictationDiagnosticsOpen((open) => !open)}
+              >
+                <span>
+                  <span className="dictation-section-kicker">診斷</span>
+                  <strong>最近一次輸入結果</strong>
+                </span>
+                <span>{dictationDiagnosticsOpen ? '收合' : '展開'}</span>
+              </button>
+              {dictationDiagnosticsOpen && (
+                <div className="dictation-collapsible-body">
+                  <div className="dictation-summary-grid">
+                    <div className="hotkey-event-box">
+                      <span className="hotkey-event-label">本次潤稿 backend</span>
+                      <span className="hotkey-event-value">{getRewriteBackendLabel(dictationViewState.rewriteBackend)}</span>
+                    </div>
+                    <div className="hotkey-event-box">
+                      <span className="hotkey-event-label">延遲</span>
+                      <span className="hotkey-event-value">{dictationViewState.finalLatencyMs ? `${dictationViewState.finalLatencyMs}ms` : '—'}</span>
+                    </div>
+                  </div>
+                  {dictationDiagnosticsAvailable ? (
+                    <div className="dictation-diagnostics-grid">
+                      <label>
+                        Literal transcript
+                        <textarea rows={3} value={dictationViewState.literalTranscript} readOnly />
+                      </label>
+                      <label>
+                        Dictionary text
+                        <textarea rows={3} value={dictationViewState.dictionaryText} readOnly />
+                      </label>
+                      <label className="dictation-diagnostics-final">
+                        Final text
+                        <textarea rows={4} value={dictationViewState.finalText} readOnly />
+                      </label>
+                    </div>
+                  ) : (
+                    <p className="model-hint">還沒有可供診斷的輸入結果。完成一次語音輸入後，這裡會顯示 literal、dictionary 與 final text 的差異。</p>
+                  )}
+                  {getRewriteFallbackLabel(dictationViewState.fallbackReason) && (
+                    <p className="model-hint">{getRewriteFallbackLabel(dictationViewState.fallbackReason)}</p>
+                  )}
+                  {dictationViewState.outputStatus && (
+                    <p className="model-hint">
+                      輸出狀態：
+                      {dictationViewState.outputStatus === 'copied' && '已複製到剪貼簿。'}
+                      {dictationViewState.outputStatus === 'pasted' && '已貼到目前視窗。'}
+                      {dictationViewState.outputStatus === 'fallback' && (dictationViewState.outputDetail ?? '貼上失敗，已保留剪貼簿內容。')}
+                    </p>
+                  )}
+                </div>
+              )}
+            </article>
           </div>
-          {hotkeyTestError && <p className="error-text">{hotkeyTestError}</p>}
-        </article>
-        <article className="panel panel-compact">
-          <h2>語音輸入</h2>
-          <label>
-            語音辨識引擎
-            <select
-              value={draft.dictationSttModel}
-              onChange={(event) => setDraft({ ...draft, dictationSttModel: event.target.value })}
-            >
-              <option value="apple-stt">SFSpeechRecognizer</option>
-              <option value="sensevoice">SenseVoice</option>
-            </select>
-          </label>
-          <label>
-            語音語言
-            <select
-              value={draft.dictationSourceLang}
-              onChange={(event) => {
-                const lang = event.target.value;
-                const recommended = lang === 'auto' ? 'sensevoice' : draft.dictationSttModel === 'sensevoice' ? 'sensevoice' : 'apple-stt';
-                setDraft({ ...draft, dictationSourceLang: lang, dictationSttModel: recommended });
-              }}
-            >
-              <option value="auto">自動偵測</option>
-              <option value="en">English</option>
-              <option value="zh">中文</option>
-              <option value="ja">日本語</option>
-              <option value="ko">한국어</option>
-            </select>
-          </label>
-          {draft.dictationSttModel === 'apple-stt' && (
-            <p className="model-hint">SFSpeechRecognizer 不會做多語自動判斷。若你要中英混講或自動偵測，改用 SenseVoice。</p>
-          )}
-          <label>
-            句尾停頓偵測（{draft.dictationEndpointMs}ms）
-            <input
-              type="range"
-              min="600"
-              max="2000"
-              step="100"
-              value={draft.dictationEndpointMs}
-              onChange={(event) => setDraft({ ...draft, dictationEndpointMs: Number(event.target.value) })}
-            />
-          </label>
-          <label>
-            輸出文字風格
-            <select
-              value={draft.dictationOutputStyle}
-              onChange={(event) => setDraft({ ...draft, dictationOutputStyle: event.target.value as AppSettings['dictationOutputStyle'] })}
-            >
-              <option value="literal">原文</option>
-              <option value="polished">潤飾後</option>
-            </select>
-          </label>
-          <p className="model-hint">規則整理會固定啟用。選「潤飾後」但未開啟本地 LLM 時，仍然只會輸出 rules-only 的結果，不會做 LLM 改寫。</p>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={draft.dictationRewriteMode === 'rules-and-local-llm'}
-              onChange={(event) => setDraft({
-                ...draft,
-                dictationRewriteMode: event.target.checked ? 'rules-and-local-llm' : 'rules',
-                dictationCloudEnhancementEnabled: false,
-              })}
-            />
-            啟用本地 LLM 潤稿（規則整理固定啟用）
-          </label>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={draft.dictationDictionaryEnabled}
-              onChange={(event) => setDraft({ ...draft, dictationDictionaryEnabled: event.target.checked })}
-            />
-            啟用自訂字典
-          </label>
-          <label>
-            自訂字典
-            <textarea
-              rows={6}
-              value={draft.dictationDictionaryText}
-              onChange={(event) => setDraft({ ...draft, dictationDictionaryText: event.target.value })}
-              placeholder={'spoken => canonical\nchat g p t => ChatGPT\nbicaption => BiCaption'}
-            />
-          </label>
-          <p className="model-hint">每行一條，格式為 <code>{'spoken => canonical'}</code>。左邊可寫常見誤轉或口語說法。</p>
-          {draft.dictationRewriteMode === 'rules-and-local-llm' && (
-            <>
-              <label>
-                本地模型 ID / 路徑
-                <input
-                  type="text"
-                  value={draft.dictationLocalLlmModel}
-                  onChange={(event) => setDraft({ ...draft, dictationLocalLlmModel: event.target.value })}
-                  placeholder="mlx-community/Qwen2.5-0.5B-Instruct-4bit"
-                />
-              </label>
-              <label>
-                自訂 runner（可選）
-                <input
-                  type="text"
-                  value={draft.dictationLocalLlmRunner}
-                  onChange={(event) => setDraft({ ...draft, dictationLocalLlmRunner: event.target.value })}
-                  placeholder="python3 /path/to/your-runner.py"
-                />
-              </label>
-            </>
-          )}
-          <label>
-            輸出方式
-            <select
-              value={draft.dictationOutputAction}
-              onChange={(event) => setDraft({ ...draft, dictationOutputAction: event.target.value as DictationOutputAction })}
-            >
-              <option value="copy">{getDictationOutputActionLabel('copy')}</option>
-              <option value="paste">{getDictationOutputActionLabel('paste')}</option>
-              <option value="copy-and-paste">{getDictationOutputActionLabel('copy-and-paste')}</option>
-            </select>
-          </label>
-          {draft.dictationOutputAction !== 'copy' && (
-            <p className="model-hint">
-              自動貼上需要 Accessibility 權限。若貼上失敗，文字仍會保留在剪貼簿。
-            </p>
-          )}
-          {draft.dictationRewriteMode === 'rules-and-local-llm' && (
-            <p className="model-hint">本地 LLM 會先吃 dictionary 校正結果，再依保守 prompt 做書面化；prompt contract 已對齊 SayIt 的「口語轉可直接貼上文字」方向。預設模型是 `mlx-community/Qwen2.5-0.5B-Instruct-4bit`。</p>
-          )}
-          <p className="model-hint">按住快捷鍵開始語音輸入，放開後結束並輸出文字。</p>
-        </article>
-        <article className="panel panel-compact">
-          <h2>最近一次輸入結果</h2>
-          <div className="dictation-summary-grid">
-            <div className="hotkey-event-box">
-              <span className="hotkey-event-label">本次潤稿 backend</span>
-              <span className="hotkey-event-value">{getRewriteBackendLabel(dictationViewState.rewriteBackend)}</span>
-            </div>
-            <div className="hotkey-event-box">
-              <span className="hotkey-event-label">延遲</span>
-              <span className="hotkey-event-value">{dictationViewState.finalLatencyMs ? `${dictationViewState.finalLatencyMs}ms` : '—'}</span>
-            </div>
-          </div>
-          <label>
-            Literal transcript
-            <textarea rows={3} value={dictationViewState.literalTranscript} readOnly />
-          </label>
-          <label>
-            Dictionary text
-            <textarea rows={3} value={dictationViewState.dictionaryText} readOnly />
-          </label>
-          <label>
-            Final text
-            <textarea rows={4} value={dictationViewState.finalText} readOnly />
-          </label>
-          {getRewriteFallbackLabel(dictationViewState.fallbackReason) && (
-            <p className="model-hint">{getRewriteFallbackLabel(dictationViewState.fallbackReason)}</p>
-          )}
-          {dictationViewState.outputStatus && (
-            <p className="model-hint">
-              輸出狀態：
-              {dictationViewState.outputStatus === 'copied' && '已複製到剪貼簿。'}
-              {dictationViewState.outputStatus === 'pasted' && '已貼到目前視窗。'}
-              {dictationViewState.outputStatus === 'fallback' && (dictationViewState.outputDetail ?? '貼上失敗，已保留剪貼簿內容。')}
-            </p>
-          )}
-        </article>
         </div>
         )}
 
