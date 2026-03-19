@@ -375,8 +375,8 @@ function showDictationOverlay() {
   if (overlayWindow) {
     subtitleOverlayBoundsCache = overlayWindow.getBounds();
     const current = overlayWindow.getBounds();
-    const width = 420;
-    const height = 140;
+    const width = 152;
+    const height = 132;
     const x = Math.round(current.x + (current.width - width) / 2);
     const y = Math.round(current.y + current.height - height);
     overlayWindow.setBounds({ x, y, width, height });

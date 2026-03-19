@@ -54,6 +54,16 @@ function OverlayView({
     }
     : dictationPrompt;
   const isDictationOverlayMode = overlayMode === 'dictation';
+  const compactDictationLabel = dictationPrompt?.tone === 'done'
+    ? '已完成'
+    : dictationPrompt?.tone === 'processing'
+      ? '整理中'
+      : '錄音中';
+  const compactDictationDetail = dictationPrompt?.tone === 'done'
+    ? dictationState.finalText
+    : dictationPrompt?.tone === 'processing'
+      ? '正在轉成可貼上的文字'
+      : '放開快捷鍵就會送出';
 
   useEffect(() => {
     const el = stackRef.current;
@@ -115,30 +125,25 @@ function OverlayView({
   if (isDictationOverlayMode && effectiveDictationPrompt) {
     return (
       <main className="overlay-window overlay-window-dictation" style={overlayStyle}>
-        <section className="dictation-overlay-shell">
-          <div className={`dictation-prompt dictation-prompt-${effectiveDictationPrompt.tone} no-drag`}>
-            <span className="dictation-prompt-dot" aria-hidden="true">
-              {effectiveDictationPrompt.tone === 'live' && (
-                <>
-                  <span className="dictation-prompt-ring dictation-prompt-ring-a" />
-                  <span className="dictation-prompt-ring dictation-prompt-ring-b" />
-                </>
-              )}
+        <section className={`dictation-float-shell dictation-float-shell-${effectiveDictationPrompt.tone}`}>
+          <button className="dictation-float-settings no-drag" onClick={closeOverlayAndFocusSettings} aria-label="Open settings">
+            •••
+          </button>
+          <div className={`dictation-float dictation-float-${effectiveDictationPrompt.tone} no-drag`}>
+            <span className="dictation-float-orb" aria-hidden="true">
+              <span className="dictation-float-wave dictation-float-wave-a" />
+              <span className="dictation-float-wave dictation-float-wave-b" />
+              <span className="dictation-float-bars">
+                <span />
+                <span />
+                <span />
+                <span />
+              </span>
             </span>
-            <div className="dictation-prompt-copy">
-              <p className="dictation-prompt-title">{effectiveDictationPrompt.title}</p>
-              <p className="dictation-prompt-text">{effectiveDictationPrompt.detail}</p>
-              {effectiveDictationPrompt.tone === 'processing' && (
-                <span className="dictation-prompt-progress" aria-hidden="true">
-                  <span className="dictation-prompt-progress-bar" />
-                </span>
-              )}
+            <div className="dictation-float-copy">
+              <p className="dictation-float-label">{compactDictationLabel}</p>
+              <p className="dictation-float-detail">{compactDictationDetail}</p>
             </div>
-          </div>
-          <div className="dictation-overlay-actions no-drag">
-            <button className="dictation-overlay-close" onClick={closeOverlayAndFocusSettings} aria-label="Hide overlay">
-              隱藏
-            </button>
           </div>
         </section>
       </main>

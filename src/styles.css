@@ -367,6 +367,171 @@ button:disabled {
   position: relative;
 }
 
+.dictation-float-shell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.dictation-float {
+  min-width: 104px;
+  max-width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border-radius: 28px;
+  background: rgba(9, 12, 17, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px);
+}
+
+.dictation-float-settings {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  padding: 0;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(246, 239, 227, 0.52);
+  box-shadow: none;
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+}
+
+.dictation-float-settings:hover {
+  color: rgba(246, 239, 227, 0.88);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dictation-float-orb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.46), transparent 24%),
+    linear-gradient(180deg, #ffb977 0%, #ff8b54 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 10px 24px rgba(255, 128, 64, 0.34);
+}
+
+.dictation-float-processing .dictation-float-orb {
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.36), transparent 24%),
+    linear-gradient(180deg, #8bc7ff 0%, #5d9dff 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 10px 24px rgba(81, 139, 255, 0.28);
+}
+
+.dictation-float-done .dictation-float-orb {
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.36), transparent 24%),
+    linear-gradient(180deg, #8edca2 0%, #4cbf7a 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 10px 24px rgba(67, 173, 109, 0.26);
+}
+
+.dictation-float-wave {
+  position: absolute;
+  inset: -7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 177, 112, 0.3);
+  animation: dictation-orb-wave 1.8s ease-out infinite;
+}
+
+.dictation-float-wave-b {
+  animation-delay: 0.9s;
+}
+
+.dictation-float-processing .dictation-float-wave {
+  border-color: rgba(139, 199, 255, 0.3);
+}
+
+.dictation-float-done .dictation-float-wave {
+  border-color: rgba(142, 220, 162, 0.28);
+}
+
+.dictation-float-bars {
+  width: 22px;
+  height: 18px;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  gap: 2px;
+}
+
+.dictation-float-bars span {
+  width: 4px;
+  border-radius: 999px;
+  background: rgba(9, 12, 17, 0.82);
+  animation: dictation-bars 0.9s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+.dictation-float-bars span:nth-child(1) {
+  height: 8px;
+}
+
+.dictation-float-bars span:nth-child(2) {
+  height: 15px;
+  animation-delay: 0.12s;
+}
+
+.dictation-float-bars span:nth-child(3) {
+  height: 11px;
+  animation-delay: 0.24s;
+}
+
+.dictation-float-bars span:nth-child(4) {
+  height: 14px;
+  animation-delay: 0.36s;
+}
+
+.dictation-float-done .dictation-float-bars span {
+  animation: none;
+  opacity: 0.9;
+}
+
+.dictation-float-copy {
+  width: 100%;
+  display: grid;
+  gap: 3px;
+  text-align: center;
+}
+
+.dictation-float-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(246, 239, 227, 0.72);
+}
+
+.dictation-float-detail {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: rgba(246, 239, 227, 0.88);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .dictation-prompt {
   display: flex;
   align-items: center;
@@ -509,6 +674,28 @@ button:disabled {
   }
   100% {
     transform: translateX(260%);
+  }
+}
+
+@keyframes dictation-orb-wave {
+  0% {
+    transform: scale(0.78);
+    opacity: 0.58;
+  }
+  100% {
+    transform: scale(1.42);
+    opacity: 0;
+  }
+}
+
+@keyframes dictation-bars {
+  0%, 100% {
+    transform: scaleY(0.55);
+    opacity: 0.72;
+  }
+  50% {
+    transform: scaleY(1.08);
+    opacity: 1;
   }
 }
 
