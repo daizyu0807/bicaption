@@ -1,4 +1,4 @@
-import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputStatusEvent, MeetingNotesRequest, MeetingNotesResult, ModelDownloadProgress, ModelStatus, OverlayBounds, SidecarEvent } from '../electron/types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputStatusEvent, MeetingNotesRequest, MeetingNotesResult, MeetingReportRequest, MeetingReportResult, ModelDownloadProgress, ModelStatus, OverlayBounds, SidecarEvent } from '../electron/types.js';
 
 type SubscribeMap = {
   'sidecar:event': SidecarEvent;
@@ -40,6 +40,7 @@ declare global {
       testDictationHotkey(binding: DictationHotkeyBinding): Promise<{ ok: boolean }>;
       stopDictationHotkeyTest(): Promise<{ ok: boolean }>;
       generateMeetingNotes(request: MeetingNotesRequest): Promise<MeetingNotesResult>;
+      exportMeetingReport(request: MeetingReportRequest): Promise<MeetingReportResult>;
       subscribe<K extends keyof SubscribeMap>(
         eventName: K,
         handler: (payload: SubscribeMap[K]) => void,

@@ -135,6 +135,17 @@ export interface MeetingNotesResult {
   rawPrompt: string;
 }
 
+export interface MeetingReportRequest {
+  transcriptId: string;
+  transcriptText?: string;
+  notes?: MeetingNotesResult | null;
+  title?: string;
+}
+
+export interface MeetingReportResult {
+  path: string;
+}
+
 export interface DictationOutputStatusEvent {
   type: 'dictation_output_status';
   action: DictationOutputAction;

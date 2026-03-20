@@ -635,6 +635,8 @@ function SettingsView({
   const [meetingNotesResult, setMeetingNotesResult] = useState<MeetingNotesResult | null>(null);
   const [meetingNotesStatus, setMeetingNotesStatus] = useState<'idle' | 'generating' | 'ready' | 'error'>('idle');
   const [meetingNotesError, setMeetingNotesError] = useState<string | null>(null);
+  const [meetingReportStatus, setMeetingReportStatus] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle');
+  const [meetingReportMessage, setMeetingReportMessage] = useState<string | null>(null);
   const [accessibilityPermission, setAccessibilityPermission] = useState<{ trusted: boolean; status: string } | null>(null);
   const [inputMonitoringPermission, setInputMonitoringPermission] = useState<{ trusted: boolean; available: boolean; detail?: string } | null>(null);
   const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
@@ -1421,6 +1423,9 @@ function SettingsView({
                       <p className="meeting-transcript-empty">停止會議後可直接用目前 prompt 產生會議記錄，並輸出到逐字稿同資料夾。</p>
                     )}
                   </div>
+                  {meetingReportMessage ? (
+                    <p className="meeting-transcript-empty">{meetingReportMessage}</p>
+                  ) : null}
                 </div>
               </article>
             </div>
@@ -1620,6 +1625,33 @@ function SettingsView({
               }}
             >
               {meetingNotesStatus === 'generating' ? '產生中…' : '產生會議記錄'}
+            </button>
+            <button
+              className="secondary"
+              disabled={meetingReportStatus === 'exporting'}
+              onClick={async () => {
+                try {
+                  setMeetingReportStatus('exporting');
+                  const transcriptText = meetingViewState.entries.map((entry) => {
+                    const speakerLabel = getMeetingSpeakerLabel(draft, entry.source, entry.speakerLabel);
+                    const translated = entry.translatedText ? `\n> ${entry.translatedText}` : '';
+                    return `## ${speakerLabel}\n${entry.sourceText}${translated}`;
+                  }).join('\n\n');
+                  const result = await window.app.exportMeetingReport({
+                    transcriptId: meetingViewState.activeSessionId ?? 'latest',
+                    transcriptText,
+                    notes: meetingNotesResult,
+                    title: 'BiCaption Meeting Report',
+                  });
+                  setMeetingReportStatus('done');
+                  setMeetingReportMessage(`已匯出 HTML 報告：${result.path}`);
+                } catch (error) {
+                  setMeetingReportStatus('error');
+                  setMeetingReportMessage(error instanceof Error ? error.message : 'Failed to export meeting report.');
+                }
+              }}
+            >
+              {meetingReportStatus === 'exporting' ? '匯出中…' : '匯出 HTML 報告'}
             </button>
           </>
         ) : (

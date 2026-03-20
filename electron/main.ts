@@ -11,7 +11,7 @@ import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
 import { getDebugTracePath, getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
-import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, MeetingNotesRequest, MeetingNotesResult, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, MeetingNotesRequest, MeetingNotesResult, MeetingReportRequest, MeetingReportResult, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
 
 const { autoUpdater } = electronUpdater;
 
@@ -229,6 +229,88 @@ function formatMeetingNotesMarkdown(result: MeetingNotesResult) {
   return sections.join('\n');
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function buildMeetingReportHtml(title: string, transcript: string, notes: MeetingNotesResult | null) {
+  const transcriptBlocks = transcript
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => `<article class="transcript-block"><pre>${escapeHtml(block)}</pre></article>`)
+    .join('\n');
+
+  const renderList = (items: string[]) => (
+    items.length > 0
+      ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+      : '<p class="muted">None</p>'
+  );
+
+  const notesSection = notes ? `
+    <section class="card">
+      <h2>Summary</h2>
+      <p>${escapeHtml(notes.summary || 'No summary generated.')}</p>
+      <h3>Decisions</h3>
+      ${renderList(notes.decisions)}
+      <h3>Action Items</h3>
+      ${renderList(notes.actionItems)}
+      <h3>Risks</h3>
+      ${renderList(notes.risks)}
+    </section>
+  ` : `
+    <section class="card">
+      <h2>Summary</h2>
+      <p class="muted">No meeting notes were generated.</p>
+    </section>
+  `;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      :root { color-scheme: light; }
+      body { margin: 0; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f1e8; color: #1f1d1a; }
+      main { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+      h1, h2, h3 { margin: 0 0 12px; }
+      .hero { margin-bottom: 24px; padding: 28px; border-radius: 24px; background: linear-gradient(135deg, #fff9ef, #efe1c6); border: 1px solid #d8c8a7; }
+      .grid { display: grid; gap: 20px; }
+      .card { padding: 24px; border-radius: 20px; background: rgba(255,255,255,0.8); border: 1px solid #d8c8a7; box-shadow: 0 10px 30px rgba(78, 57, 24, 0.08); }
+      .muted { color: #6b6256; }
+      pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+      ul { margin: 0; padding-left: 20px; }
+      .transcript-list { display: grid; gap: 12px; }
+      .transcript-block { padding: 16px; border-radius: 14px; background: #fffdf8; border: 1px solid #e4d7bd; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <h1>${escapeHtml(title)}</h1>
+        <p class="muted">Exported from BiCaption meeting mode.</p>
+      </section>
+      <div class="grid">
+        ${notesSection}
+        <section class="card">
+          <h2>Transcript</h2>
+          <div class="transcript-list">
+            ${transcriptBlocks || '<p class="muted">No transcript available.</p>'}
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>`;
+}
+
 function runMeetingNotesGeneration(request: MeetingNotesRequest): MeetingNotesResult {
   const transcriptPath = meetingTranscriptFilePath ?? getLatestMeetingTranscriptPath();
   const transcript = (request.transcriptText ?? '').trim() || (
@@ -293,6 +375,25 @@ function runMeetingNotesGeneration(request: MeetingNotesRequest): MeetingNotesRe
   const notesPath = join(dirname(notesBasePath), `${basename(notesBasePath, extname(notesBasePath))}-notes.md`);
   writeFileSync(notesPath, formatMeetingNotesMarkdown(result), 'utf-8');
   return result;
+}
+
+function runMeetingReportExport(request: MeetingReportRequest): MeetingReportResult {
+  const transcriptPath = meetingTranscriptFilePath ?? getLatestMeetingTranscriptPath();
+  const transcript = (request.transcriptText ?? '').trim() || (
+    transcriptPath && existsSync(transcriptPath) ? readFileSync(transcriptPath, 'utf-8').trim() : ''
+  );
+  if (!transcript) {
+    throw new Error('No meeting transcript is available yet.');
+  }
+
+  const title = request.title?.trim() || `Meeting Report ${new Date().toLocaleString('sv-SE').replace(' ', '_').replaceAll(':', '-')}`;
+  const notes = request.notes ?? null;
+  const reportBasePath = transcriptPath && existsSync(transcriptPath)
+    ? transcriptPath
+    : join(loadSettings().meetingTranscriptDirectory || getSpawnCwd(), 'latest_meeting.md');
+  const reportPath = join(dirname(reportBasePath), `${basename(reportBasePath, extname(reportBasePath))}-report.html`);
+  writeFileSync(reportPath, buildMeetingReportHtml(title, transcript, notes), 'utf-8');
+  return { path: reportPath };
 }
 
 function sendToWindows(channel: string, payload: unknown) {
@@ -1302,6 +1403,9 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('meeting:generate-notes', (_event, request: MeetingNotesRequest) => {
     return runMeetingNotesGeneration(request);
+  });
+  ipcMain.handle('meeting:export-report', (_event, request: MeetingReportRequest) => {
+    return runMeetingReportExport(request);
   });
   ipcMain.handle('models:check', () => {
     return modelDownloader.checkStatus();

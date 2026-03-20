@@ -33,5 +33,6 @@ contextBridge.exposeInMainWorld('app', {
   testDictationHotkey: (binding) => ipcRenderer.invoke('dictation:test-hotkey', binding),
   stopDictationHotkeyTest: () => ipcRenderer.invoke('dictation:stop-hotkey-test'),
   generateMeetingNotes: (request) => ipcRenderer.invoke('meeting:generate-notes', request),
+  exportMeetingReport: (request) => ipcRenderer.invoke('meeting:export-report', request),
   subscribe: (eventName, handler) => on(eventName, handler),
 });
