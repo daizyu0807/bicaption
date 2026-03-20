@@ -1,9 +1,11 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Tray, nativeImage, screen, shell, systemPreferences } from 'electron';
+import type { MessageBoxOptions } from 'electron';
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { autoUpdater } from 'electron-updater';
 import { SidecarBridge } from './sidecar.js';
 import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
@@ -37,6 +39,8 @@ let overlayMode: 'hidden' | 'subtitle' | 'dictation' = 'hidden';
 let subtitleOverlayBoundsCache: OverlayBounds | null = null;
 let dictationOverlayBoundsCache: OverlayBounds | null = null;
 let tray: Tray | null = null;
+let updateStatus: 'idle' | 'checking' | 'downloading' | 'downloaded' = 'idle';
+let manualUpdateCheckPending = false;
 
 const DEFAULT_SUBTITLE_OVERLAY_WIDTH = 900;
 const DEFAULT_SUBTITLE_OVERLAY_HEIGHT = 220;
@@ -520,6 +524,13 @@ function rebuildTrayMenu() {
   if (!tray) {
     return;
   }
+  const updateMenuLabel = updateStatus === 'checking'
+    ? '檢查更新中…'
+    : updateStatus === 'downloading'
+      ? '下載更新中…'
+      : updateStatus === 'downloaded'
+        ? '重新啟動以完成更新'
+        : '檢查更新';
   const contextMenu = Menu.buildFromTemplate([
     {
       label: '打開設定',
@@ -556,6 +567,18 @@ function rebuildTrayMenu() {
           prepareSession(config);
           bridge.startSession(config);
         });
+      },
+    },
+    { type: 'separator' },
+    {
+      label: updateMenuLabel,
+      enabled: shouldEnableAutoUpdater() && updateStatus !== 'checking' && updateStatus !== 'downloading',
+      click: () => {
+        if (updateStatus === 'downloaded') {
+          autoUpdater.quitAndInstall();
+          return;
+        }
+        void checkForAppUpdates(true);
       },
     },
     { type: 'separator' },
@@ -696,6 +719,131 @@ function forwardEvent(event: SidecarEvent) {
   sendToWindows('sidecar:event', event);
 }
 
+function shouldEnableAutoUpdater() {
+  return isPackaged && !isDev;
+}
+
+async function showUpdateInfo(message: string, detail?: string) {
+  const options: MessageBoxOptions = {
+    type: 'info',
+    message,
+    detail,
+    buttons: ['知道了'],
+    defaultId: 0,
+  };
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    await dialog.showMessageBox(settingsWindow, options);
+    return;
+  }
+  await dialog.showMessageBox(options);
+}
+
+function setupAutoUpdater() {
+  if (!shouldEnableAutoUpdater()) {
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => {
+    updateStatus = 'checking';
+    rebuildTrayMenu();
+  });
+
+  autoUpdater.on('update-available', async (info) => {
+    updateStatus = 'downloading';
+    rebuildTrayMenu();
+    if (manualUpdateCheckPending) {
+      manualUpdateCheckPending = false;
+      await showUpdateInfo(
+        `發現新版本 ${info.version}`,
+        'BiCaption 正在背景下載更新，完成後會提示重新啟動。',
+      );
+    }
+  });
+
+  autoUpdater.on('update-not-available', async () => {
+    updateStatus = 'idle';
+    rebuildTrayMenu();
+    if (manualUpdateCheckPending) {
+      manualUpdateCheckPending = false;
+      await showUpdateInfo('目前已是最新版本');
+    }
+  });
+
+  autoUpdater.on('error', async (error) => {
+    updateStatus = 'idle';
+    rebuildTrayMenu();
+    traceMain(`autoUpdater error=${String(error)}`);
+    if (manualUpdateCheckPending) {
+      manualUpdateCheckPending = false;
+      const options: MessageBoxOptions = {
+        type: 'error',
+        message: '檢查更新失敗',
+        detail: error instanceof Error ? error.message : String(error),
+        buttons: ['知道了'],
+      };
+      if (settingsWindow && !settingsWindow.isDestroyed()) {
+        await dialog.showMessageBox(settingsWindow, options);
+      } else {
+        await dialog.showMessageBox(options);
+      }
+    }
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    updateStatus = 'downloaded';
+    rebuildTrayMenu();
+    const options: MessageBoxOptions = {
+      type: 'info',
+      message: `BiCaption ${info.version} 已下載完成`,
+      detail: '重新啟動後會自動安裝更新。',
+      buttons: ['稍後', '立即重新啟動'],
+      defaultId: 1,
+      cancelId: 0,
+    };
+    const result = settingsWindow && !settingsWindow.isDestroyed()
+      ? await dialog.showMessageBox(settingsWindow, options)
+      : await dialog.showMessageBox(options);
+    if (result.response === 1) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+}
+
+async function checkForAppUpdates(manual = false) {
+  if (!shouldEnableAutoUpdater()) {
+    if (manual) {
+      await showUpdateInfo('目前是開發模式或未打包版本，未啟用自動更新。');
+    }
+    return;
+  }
+
+  manualUpdateCheckPending = manual;
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    updateStatus = 'idle';
+    rebuildTrayMenu();
+    traceMain(`checkForAppUpdates failed=${String(error)}`);
+    if (manual) {
+      manualUpdateCheckPending = false;
+      const options: MessageBoxOptions = {
+        type: 'error',
+        message: '檢查更新失敗',
+        detail: error instanceof Error ? error.message : String(error),
+        buttons: ['知道了'],
+      };
+      if (settingsWindow && !settingsWindow.isDestroyed()) {
+        await dialog.showMessageBox(settingsWindow, options);
+      } else {
+        await dialog.showMessageBox(options);
+      }
+    }
+  }
+}
+
 function forwardHotkeyEvent(event: DictationHotkeyEvent) {
   traceMain(`hotkey event=${event.type} keyCode=${String(event.keyCode)} pressed=${String(dictationHotkeyPressed)} mode=${hotkeyListenerMode}`);
   sendToWindows('dictation:hotkey-event', event);
@@ -816,6 +964,7 @@ app.whenReady().then(() => {
   createSettingsWindow();
   createOverlayWindow();
   createTray();
+  setupAutoUpdater();
   app.dock?.hide();
 
   ipcMain.handle('settings:load', () => loadSettings());
@@ -970,6 +1119,12 @@ app.whenReady().then(() => {
     bindBridge();
   } catch (err) {
     console.error('Failed to start sidecar bridge:', err);
+  }
+
+  if (shouldEnableAutoUpdater()) {
+    setTimeout(() => {
+      void checkForAppUpdates(false);
+    }, 3000);
   }
 });
 

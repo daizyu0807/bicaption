@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "electron-store": "^10.1.0",
+    "electron-updater": "^6.8.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -64,6 +65,7 @@
       }
     ],
     "mac": {
+      "icon": "build/icon.icns",
       "category": "public.app-category.utilities",
       "target": [
         {
@@ -82,6 +84,11 @@
     "dmg": {
       "title": "BiCaption ${version}",
       "artifactName": "BiCaption-${version}-${arch}.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "daizyu0807",
+      "repo": "bicaption"
     }
   }
 }
