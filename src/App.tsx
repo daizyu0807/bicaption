@@ -495,24 +495,6 @@ const MODEL_LIBRARY = [
     description: 'Apple Silicon 上的高品質 batch 轉錄路徑，優先用於 dictation。',
   },
   {
-    key: 'whisper-tiny-en',
-    label: 'Whisper tiny.en',
-    sizeLabel: '~80 MB',
-    description: '極輕量英文模型，適合低資源與快速驗證。',
-  },
-  {
-    key: 'whisper-small',
-    label: 'Whisper small',
-    sizeLabel: '~480 MB',
-    description: '英文準確率更高的 Whisper 模型，載入時間也較長。',
-  },
-  {
-    key: 'zipformer-ko',
-    label: 'Zipformer Korean',
-    sizeLabel: '~180 MB',
-    description: '韓文辨識模型，適合韓文字幕與口語輸入。',
-  },
-  {
     key: 'vad',
     label: 'Silero VAD',
     sizeLabel: '~2 MB',
@@ -528,12 +510,6 @@ function isModelReady(status: ModelStatus | null, key: (typeof MODEL_LIBRARY)[nu
       return status?.sensevoice ?? false;
     case 'mlx-whisper':
       return status?.mlxWhisper ?? false;
-    case 'whisper-tiny-en':
-      return status?.whisperTinyEn ?? false;
-    case 'whisper-small':
-      return status?.whisperSmall ?? false;
-    case 'zipformer-ko':
-      return status?.zipformerKo ?? false;
     case 'vad':
       return status?.vad ?? false;
     default:
