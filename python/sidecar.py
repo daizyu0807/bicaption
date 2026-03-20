@@ -46,8 +46,12 @@ DEFAULT_EMIT_CONTEXT = {
 _emit_context = dict(DEFAULT_EMIT_CONTEXT)
 TRACE_PATH = os.environ.get("BICAPTION_TRACE_PATH", "").strip()
 LOCAL_SPEAKER_PROFILE_ID = "meeting-local-speaker"
-LOCAL_SPEAKER_MIN_ENROLL_SECONDS = 3.0
+LOCAL_SPEAKER_MIN_ENROLL_SECONDS = 5.0
 LOCAL_SPEAKER_MATCH_THRESHOLD = 0.82
+LOCAL_SPEAKER_MIN_RUNTIME_SPEECH_RATIO = 0.2
+LOCAL_SPEAKER_MIN_ENROLL_SPEECH_RATIO = 0.5
+LOCAL_SPEAKER_MIN_PEAK_LEVEL = 0.02
+LOCAL_SPEAKER_MIN_RMS_LEVEL = 0.008
 
 
 def trace_debug(message: str) -> None:
@@ -83,6 +87,15 @@ def normalize_text(text: str) -> str:
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))
+
+
+@dataclass
+class SpeakerAudioQuality:
+    valid: bool
+    peak_level: float
+    rms_level: float
+    speech_ratio: float
+    frame_count: int
 
 
 def count_words(text: str) -> int:
@@ -133,13 +146,53 @@ def normalize_mlx_whisper_lang(source_lang: str) -> str | None:
     return normalized
 
 
-def build_speaker_fingerprint(audio: np.ndarray) -> list[float] | None:
+def assess_speaker_audio(
+    audio: np.ndarray,
+    min_speech_ratio: float = LOCAL_SPEAKER_MIN_RUNTIME_SPEECH_RATIO,
+) -> SpeakerAudioQuality:
+    if audio.size < int(SAMPLE_RATE * 0.8):
+        return SpeakerAudioQuality(False, 0.0, 0.0, 0.0, 0)
+    samples = np.asarray(audio, dtype=np.float32)
+    peak_level = float(np.max(np.abs(samples))) if samples.size else 0.0
+    rms_level = float(np.sqrt(np.mean(np.square(samples)))) if samples.size else 0.0
+    if peak_level < LOCAL_SPEAKER_MIN_PEAK_LEVEL or rms_level < LOCAL_SPEAKER_MIN_RMS_LEVEL:
+        return SpeakerAudioQuality(False, peak_level, rms_level, 0.0, 0)
+    frame_size = 512
+    hop_size = 256
+    if samples.size < frame_size:
+        samples = np.pad(samples, (0, frame_size - samples.size))
+    frame_rms: list[float] = []
+    for start in range(0, max(1, samples.size - frame_size + 1), hop_size):
+        frame = samples[start:start + frame_size]
+        if frame.size < frame_size:
+            frame = np.pad(frame, (0, frame_size - frame.size))
+        frame_rms.append(float(np.sqrt(np.mean(np.square(frame)))))
+    if not frame_rms:
+        return SpeakerAudioQuality(False, peak_level, rms_level, 0.0, 0)
+    frame_rms_np = np.asarray(frame_rms, dtype=np.float32)
+    noise_floor = float(np.percentile(frame_rms_np, 20))
+    speech_threshold = max(LOCAL_SPEAKER_MIN_RMS_LEVEL, noise_floor * 2.5, rms_level * 0.6)
+    speech_ratio = float(np.mean(frame_rms_np >= speech_threshold))
+    return SpeakerAudioQuality(
+        speech_ratio >= min_speech_ratio,
+        peak_level,
+        rms_level,
+        speech_ratio,
+        int(frame_rms_np.size),
+    )
+
+
+def build_speaker_fingerprint(
+    audio: np.ndarray,
+    min_speech_ratio: float = LOCAL_SPEAKER_MIN_RUNTIME_SPEECH_RATIO,
+) -> list[float] | None:
     if audio.size < int(SAMPLE_RATE * 0.8):
         return None
     samples = np.asarray(audio, dtype=np.float32)
-    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
-    if peak <= 1e-4:
+    quality = assess_speaker_audio(samples, min_speech_ratio=min_speech_ratio)
+    if not quality.valid:
         return None
+    peak = quality.peak_level
     samples = samples / peak
     frame_size = 1024
     hop_size = 512
@@ -229,7 +282,13 @@ def enroll_local_speaker(device_id: str, duration_sec: float) -> dict[str, Any]:
     if not chunks:
         raise RuntimeError("No microphone audio was captured during enrollment.")
     audio = np.concatenate(chunks).astype(np.float32)
-    fingerprint_features = build_speaker_fingerprint(audio)
+    quality = assess_speaker_audio(audio, min_speech_ratio=LOCAL_SPEAKER_MIN_ENROLL_SPEECH_RATIO)
+    if not quality.valid:
+        raise RuntimeError(
+            "Enrollment audio did not contain enough clear speech. "
+            f"speech_ratio={quality.speech_ratio:.2f} rms={quality.rms_level:.4f} peak={quality.peak_level:.4f}"
+        )
+    fingerprint_features = build_speaker_fingerprint(audio, min_speech_ratio=LOCAL_SPEAKER_MIN_ENROLL_SPEECH_RATIO)
     if fingerprint_features is None:
         raise RuntimeError("Enrollment audio was too short or too quiet to build a speaker fingerprint.")
     return {
@@ -237,6 +296,8 @@ def enroll_local_speaker(device_id: str, duration_sec: float) -> dict[str, Any]:
         "fingerprint": serialize_speaker_fingerprint(fingerprint_features),
         "sampleDurationMs": int(round(audio.size / SAMPLE_RATE * 1000)),
         "enrolledAtMs": started_at_ms,
+        "speechRatio": round(quality.speech_ratio, 3),
+        "qualityScore": round(clamp((quality.speech_ratio * 0.7) + min(1.0, quality.rms_level / 0.03) * 0.3, 0.0, 1.0), 3),
     }
 
 
@@ -2376,10 +2437,23 @@ class SidecarApp:
         reference = self.meeting_local_speaker_reference
         if reference is None:
             return "unverified-local", "", 0.0
-        candidate = build_speaker_fingerprint(audio)
+        quality = assess_speaker_audio(audio, min_speech_ratio=LOCAL_SPEAKER_MIN_RUNTIME_SPEECH_RATIO)
+        if not quality.valid:
+            trace_debug(
+                f"meeting speaker match skipped session={self.config.session_id} "
+                f"reason=low_speech_quality speech_ratio={quality.speech_ratio:.2f} "
+                f"rms={quality.rms_level:.4f} peak={quality.peak_level:.4f}"
+            )
+            return "source-default", self.config.meeting_local_speaker_profile_id, 0.0
+        candidate = build_speaker_fingerprint(audio, min_speech_ratio=LOCAL_SPEAKER_MIN_RUNTIME_SPEECH_RATIO)
         if candidate is None:
-            return "unverified-local", self.config.meeting_local_speaker_profile_id, 0.0
+            trace_debug(f"meeting speaker match skipped session={self.config.session_id} reason=fingerprint_unavailable")
+            return "source-default", self.config.meeting_local_speaker_profile_id, 0.0
         confidence = compare_speaker_fingerprints(reference, candidate)
+        trace_debug(
+            f"meeting speaker match session={self.config.session_id} confidence={confidence:.3f} "
+            f"threshold={LOCAL_SPEAKER_MATCH_THRESHOLD:.2f} speech_ratio={quality.speech_ratio:.2f}"
+        )
         if confidence >= LOCAL_SPEAKER_MATCH_THRESHOLD:
             return "verified-local", self.config.meeting_local_speaker_profile_id, confidence
         return "unverified-local", self.config.meeting_local_speaker_profile_id, confidence

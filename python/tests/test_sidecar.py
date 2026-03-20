@@ -48,6 +48,7 @@ import numpy as np
 HAS_REAL_NUMPY = hasattr(np, "array")
 
 from sidecar import (
+    assess_speaker_audio,
     apply_dictation_dictionary,
     apply_dictation_rules_rewrite,
     build_speaker_fingerprint,
@@ -137,6 +138,24 @@ class TranslationProviderTest(unittest.TestCase):
             self.skipTest("numpy is unavailable in this test environment")
         audio = np.array([0.2] * 1000, dtype="float32")
         self.assertIsNone(build_speaker_fingerprint(audio))
+
+    def test_speaker_audio_quality_rejects_silence(self) -> None:
+        if not HAS_REAL_NUMPY:
+            self.skipTest("numpy is unavailable in this test environment")
+        audio = np.zeros(16000, dtype="float32")
+        quality = assess_speaker_audio(audio)
+        self.assertFalse(quality.valid)
+        self.assertEqual(quality.speech_ratio, 0.0)
+
+    def test_speaker_audio_quality_rejects_sparse_speech_for_enrollment(self) -> None:
+        if not HAS_REAL_NUMPY:
+            self.skipTest("numpy is unavailable in this test environment")
+        audio = np.zeros(32000, dtype="float32")
+        t = np.arange(3200, dtype="float32") / 16000.0
+        audio[8000:11200] = 0.12 * np.sin(2 * np.pi * 220 * t)
+        quality = assess_speaker_audio(audio, min_speech_ratio=0.5)
+        self.assertFalse(quality.valid)
+        self.assertLess(quality.speech_ratio, 0.5)
 
     def test_dictation_final_event_normalizes_buffered_text(self) -> None:
         event = build_dictation_final_event("session-1", ["  hello", "world  "], 10, 40)
