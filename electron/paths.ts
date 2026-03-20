@@ -78,6 +78,17 @@ export function getSpawnCwd(): string {
   return projectRoot;
 }
 
+export function getManagedHuggingFaceHome(): string {
+  const baseDir = isPackaged()
+    ? app.getPath('userData')
+    : join(projectRoot, '.cache');
+  const hfHome = join(baseDir, 'huggingface');
+  if (!existsSync(hfHome)) {
+    mkdirSync(hfHome, { recursive: true });
+  }
+  return hfHome;
+}
+
 export function getModelDir(): string {
   if (isPackaged()) {
     const modelDir = join(app.getPath('userData'), 'models');

@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CaptionConfig, SidecarEvent } from './types.js';
-import { getDebugTracePath, getSidecarCommand, getModelDir, getSpawnCwd } from './paths.js';
+import { getDebugTracePath, getManagedHuggingFaceHome, getSidecarCommand, getModelDir, getSpawnCwd } from './paths.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ignoredStderrPatterns = [
@@ -45,6 +45,7 @@ export class SidecarBridge extends EventEmitter {
     }
 
     const { command, args: spawnArgs } = getSidecarCommand();
+    const huggingFaceHome = getManagedHuggingFaceHome();
     traceSidecar(`spawn command=${command} args=${spawnArgs.join(' ')}`);
     const child = spawn(command, spawnArgs, {
       cwd: getSpawnCwd(),
@@ -56,6 +57,8 @@ export class SidecarBridge extends EventEmitter {
         MKL_VERBOSE: '0',
         BICAPTION_MODEL_DIR: getModelDir(),
         BICAPTION_TRACE_PATH: tracePath,
+        HF_HOME: huggingFaceHome,
+        HUGGINGFACE_HUB_CACHE: join(huggingFaceHome, 'hub'),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

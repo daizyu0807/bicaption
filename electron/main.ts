@@ -9,7 +9,7 @@ import { SidecarBridge } from './sidecar.js';
 import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
-import { getDebugTracePath, getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
+import { getDebugTracePath, getSidecarCommand, getGlobalHotkeyCommand, getManagedHuggingFaceHome, getModelDir, getSpawnCwd } from './paths.js';
 import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, MeetingEnrollSpeakerRequest, MeetingEnrollSpeakerResult, MeetingNotesRequest, MeetingNotesResult, MeetingReportRequest, MeetingReportResult, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,7 +52,7 @@ const DICTATION_OVERLAY_SIZE = 56;
 
 const bridge = new SidecarBridge();
 const nativeHotkeyBridge = new NativeHotkeyBridge();
-const modelDownloader = new ModelDownloader(getModelDir());
+const modelDownloader = new ModelDownloader(getModelDir(), getManagedHuggingFaceHome());
 const tracePath = getDebugTracePath();
 
 function traceMain(message: string) {

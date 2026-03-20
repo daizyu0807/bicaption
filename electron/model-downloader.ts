@@ -41,15 +41,17 @@ export interface ModelDownloadProgress {
 
 export class ModelDownloader extends EventEmitter {
   private pythonDir: string;
+  private huggingFaceHome: string;
   private aborted = false;
 
   /**
    * @param modelDir - Directory where models are stored.
    *   In dev: projectRoot/python. In production: userData/models.
    */
-  constructor(modelDir: string) {
+  constructor(modelDir: string, huggingFaceHome: string) {
     super();
     this.pythonDir = modelDir;
+    this.huggingFaceHome = huggingFaceHome;
   }
 
   checkStatus(): ModelStatus {
@@ -293,7 +295,14 @@ export class ModelDownloader extends EventEmitter {
           'snapshot_download(repo_id=sys.argv[1], local_files_only=True)',
         ].join('; '),
         modelId,
-      ], { stdio: 'ignore' });
+      ], {
+        stdio: 'ignore',
+        env: {
+          ...process.env,
+          HF_HOME: this.huggingFaceHome,
+          HUGGINGFACE_HUB_CACHE: join(this.huggingFaceHome, 'hub'),
+        },
+      });
       return true;
     } catch {
       return false;
@@ -314,6 +323,11 @@ export class ModelDownloader extends EventEmitter {
         modelId,
       ], {
         cwd: process.cwd(),
+        env: {
+          ...process.env,
+          HF_HOME: this.huggingFaceHome,
+          HUGGINGFACE_HUB_CACHE: join(this.huggingFaceHome, 'hub'),
+        },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       child.stdout.on('data', () => {
