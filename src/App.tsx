@@ -372,6 +372,13 @@ function getDefaultSubtitleTargetLang(sourceLang: string): string {
   return 'zh-TW';
 }
 
+function getRecommendedSubtitleSttModel(sourceLang: string, currentModel?: string): string {
+  if (currentModel === 'moonshine' || sourceLang === 'en') {
+    return 'moonshine';
+  }
+  return sourceLang === 'auto' ? 'sensevoice' : 'apple-stt';
+}
+
 function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle'): CaptionConfig {
   const isDictation = mode === 'dictation';
   const isMeeting = mode === 'meeting';
@@ -1014,7 +1021,7 @@ function SettingsView({
                   來源語言
                   <select value={draft.sourceLang} onChange={(event) => {
                     const lang = event.target.value;
-                    const recommended = lang === 'auto' ? 'sensevoice' : 'apple-stt';
+                    const recommended = getRecommendedSubtitleSttModel(lang, draft.sttModel);
                     const nextDraft: AppSettings = {
                       ...draft,
                       sourceLang: lang,
@@ -1099,14 +1106,29 @@ function SettingsView({
               <h3 className="dictation-section-title">進階</h3>
               <label>
                 語音辨識引擎
-                <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
+                <select
+                  value={draft.sttModel}
+                  onChange={(event) => {
+                    const nextModel = event.target.value;
+                    if (nextModel === 'moonshine') {
+                      setDraft({
+                        ...draft,
+                        sttModel: 'moonshine',
+                        sourceLang: 'en',
+                        targetLang: isTranslationEnabled(draft) ? getDefaultSubtitleTargetLang('en') : draft.targetLang,
+                      });
+                      return;
+                    }
+                    setDraft({ ...draft, sttModel: nextModel });
+                  }}
+                >
                   <option value="moonshine">Moonshine（實驗性）</option>
                   <option value="apple-stt">SFSpeechRecognizer</option>
                   <option value="sensevoice">SenseVoice</option>
                 </select>
               </label>
               {draft.sttModel === 'moonshine' && (
-                <p className="model-hint">Milestone 1 先建立 Moonshine provider 掛點；目前若本機未接入 Moonshine runtime，會回退到 SenseVoice。</p>
+                <p className="model-hint">目前 Moonshine 先固定走英文串流辨識。切換到 Moonshine 時會自動把來源語言設成 English。</p>
               )}
               {draft.sttModel === 'apple-stt' && (
                 <>

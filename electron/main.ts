@@ -142,9 +142,12 @@ function getDefaultSubtitleOverlayBounds() {
   const height = Math.max(MIN_SUBTITLE_OVERLAY_HEIGHT, settings.overlayHeight || DEFAULT_SUBTITLE_OVERLAY_HEIGHT);
   const defaultX = Math.round((primary.workArea.width - width) / 2);
   const defaultY = primary.workArea.height - height - 40;
+  const hasStoredPosition = Number.isFinite(settings.overlayX)
+    && Number.isFinite(settings.overlayY)
+    && !(settings.overlayX === 0 && settings.overlayY === 0);
   return {
-    x: settings.overlayX ?? defaultX,
-    y: settings.overlayY ?? defaultY,
+    x: hasStoredPosition ? settings.overlayX : defaultX,
+    y: hasStoredPosition ? settings.overlayY : defaultY,
     width,
     height,
   } satisfies OverlayBounds;
@@ -651,6 +654,7 @@ function persistOverlayBounds() {
     dictationOverlayBoundsCache = bounds;
     return;
   }
+  subtitleOverlayBoundsCache = bounds;
   saveSettings({
     overlayX: bounds.x,
     overlayY: bounds.y,
