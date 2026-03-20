@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Generate .icns from icon.svg using headless Chrome (or Safari) + sips + iconutil.
-# Requires: macOS built-in tools (sips, iconutil, qlmanage)
+# Generate .icns from icon.svg.
+# Preferred path: render SVG -> PNG, then use electron-builder's app-builder to make icns.
+# Fallback path: iconutil.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -8,18 +9,18 @@ BUILD_DIR="$SCRIPT_DIR/../build"
 SVG_FILE="$BUILD_DIR/icon.svg"
 ICONSET_DIR="$BUILD_DIR/icon.iconset"
 ICNS_FILE="$BUILD_DIR/icon.icns"
+APP_BUILDER="$SCRIPT_DIR/../node_modules/app-builder-bin/mac/app-builder_arm64"
+CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 if [ ! -f "$SVG_FILE" ]; then
   echo "[generate-icon] ERROR: $SVG_FILE not found"
   exit 1
 fi
 
-# Create a high-res PNG from SVG using qlmanage (macOS built-in)
-# qlmanage doesn't handle SVG well, so we use a python one-liner with webkit
 PNG_1024="$BUILD_DIR/icon_1024.png"
 
 # Use macOS built-in python3 + objc to render SVG to PNG
-python3 << 'PYEOF'
+python3 << 'PYEOF' || true
 import subprocess, sys, os
 
 build_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build") if False else sys.argv[1] if len(sys.argv) > 1 else "build"
@@ -61,17 +62,35 @@ except ImportError:
     sys.exit(1)
 PYEOF
 
-if [ $? -ne 0 ] || [ ! -f "$PNG_1024" ]; then
-  # Ultra-fallback: use sips to convert SVG (works on some macOS versions)
-  sips -s format png --resampleWidth 1024 "$SVG_FILE" --out "$PNG_1024" 2>/dev/null || {
-    echo "[generate-icon] ERROR: Cannot convert SVG to PNG. Install cairosvg: pip3 install cairosvg"
-    exit 1
-  }
+if [ ! -f "$PNG_1024" ] && [ -x "$CHROME_BIN" ]; then
+  "$CHROME_BIN" \
+    --headless \
+    --disable-gpu \
+    --hide-scrollbars \
+    --screenshot="$PNG_1024" \
+    --window-size=1024,1024 \
+    "file://$SVG_FILE" >/dev/null 2>&1 || true
+fi
+
+if [ ! -f "$PNG_1024" ]; then
+  echo "[generate-icon] ERROR: Cannot convert SVG to PNG. Install cairosvg or make Chrome available."
+  exit 1
 fi
 
 echo "[generate-icon] Created 1024x1024 PNG"
 
-# Create iconset with all required sizes
+if [ -x "$APP_BUILDER" ]; then
+  rm -rf "$BUILD_DIR/.tmp-icon-out"
+  mkdir -p "$BUILD_DIR/.tmp-icon-out"
+  "$APP_BUILDER" icon --format=icns --root "$SCRIPT_DIR/.." --input "$PNG_1024" --out "$BUILD_DIR/.tmp-icon-out" >/dev/null
+  cp "$BUILD_DIR/.tmp-icon-out/icon.icns" "$ICNS_FILE"
+  rm -rf "$BUILD_DIR/.tmp-icon-out"
+  echo "[generate-icon] Success via app-builder: $ICNS_FILE"
+  ls -lh "$ICNS_FILE"
+  exit 0
+fi
+
+# Fallback to iconutil if app-builder is unavailable.
 rm -rf "$ICONSET_DIR"
 mkdir -p "$ICONSET_DIR"
 
@@ -81,14 +100,8 @@ for size in 16 32 128 256 512; do
   sips -z $double $double "$PNG_1024" --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" >/dev/null
 done
 
-# 512@2x is 1024
 cp "$PNG_1024" "$ICONSET_DIR/icon_512x512@2x.png"
-
-echo "[generate-icon] Created iconset with all sizes"
-
-# Convert to .icns
 iconutil -c icns "$ICONSET_DIR" -o "$ICNS_FILE"
-rm -rf "$ICONSET_DIR" "$PNG_1024"
-
-echo "[generate-icon] Success: $ICNS_FILE"
+rm -rf "$ICONSET_DIR"
+echo "[generate-icon] Success via iconutil: $ICNS_FILE"
 ls -lh "$ICNS_FILE"
