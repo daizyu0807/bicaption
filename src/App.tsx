@@ -13,6 +13,7 @@ import { applySettingsOverlayStyle, initialViewState, reduceSidecarEvent } from 
 import { initialDictationViewState, reduceDictationEvent, reduceDictationOutputStatus } from './dictation-state.js';
 import { pickPreferredInputDevice } from './device-preferences.js';
 import { getDictationHotkeyLabel, isModifierOnlyHotkey, validateDictationHotkey } from './dictation-hotkey.js';
+import { initialMeetingViewState, reduceMeetingEvent } from './meeting-state.js';
 
 function isOverlayRoute() {
   return window.location.hash === '#overlay';
@@ -317,6 +318,30 @@ function useOverlayMode() {
   return mode;
 }
 
+function useMeetingState() {
+  const [viewState, setViewState] = useState(initialMeetingViewState);
+
+  useEffect(() => {
+    if (!window.app) {
+      setViewState((current) => ({
+        ...current,
+        sessionState: 'error',
+        lastError: 'Preload API is unavailable.',
+      }));
+      return;
+    }
+
+    return window.app.subscribe('sidecar:event', (payload) => {
+      const event = payload as SidecarEvent;
+      startTransition(() => {
+        setViewState((current) => reduceMeetingEvent(current, event));
+      });
+    });
+  }, []);
+
+  return viewState;
+}
+
 function getDictationPrompt(
   state: ReturnType<typeof useDictationState>,
   showResult: boolean,
@@ -506,6 +531,17 @@ function getDictationOutputActionLabel(action: DictationOutputAction) {
   }
 }
 
+function isStreamingModelReady(status: ModelStatus | null, modelKey: string) {
+  const modelReadyMap: Record<string, boolean> = {
+    moonshine: true,
+    sensevoice: status?.sensevoice ?? false,
+    'apple-stt': true,
+  };
+  return modelKey === 'sensevoice'
+    ? Boolean(modelReadyMap[modelKey] && (status?.vad ?? true))
+    : Boolean(modelReadyMap[modelKey]);
+}
+
 function getRewriteBackendLabel(backend: 'disabled' | 'rules' | 'cloud-llm' | 'local-llm' | null) {
   switch (backend) {
     case 'disabled':
@@ -555,6 +591,7 @@ function SettingsView({
   devices,
   viewState,
   dictationViewState,
+  meetingViewState,
   modelStatus,
   onSave,
 }: {
@@ -562,6 +599,7 @@ function SettingsView({
   devices: Array<{ id: string; label: string; kind: string }>;
   viewState: ReturnType<typeof useCaptionState>;
   dictationViewState: ReturnType<typeof useDictationState>;
+  meetingViewState: ReturnType<typeof useMeetingState>;
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
@@ -581,15 +619,8 @@ function SettingsView({
   const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
   const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
   const localLlmEnabled = draft.dictationRewriteMode === 'rules-and-local-llm';
-  const modelReadyMap: Record<string, boolean> = {
-    moonshine: true,
-    sensevoice: localModelStatus?.sensevoice ?? false,
-    'apple-stt': true,  // No model download needed — uses macOS built-in
-  };
-  const selectedModelReady = modelReadyMap[draft.sttModel] ?? false;
-  const modelsReady = draft.sttModel === 'sensevoice'
-    ? selectedModelReady && (localModelStatus?.vad ?? true)
-    : selectedModelReady;
+  const modelsReady = isStreamingModelReady(localModelStatus, draft.sttModel);
+  const meetingModelsReady = isStreamingModelReady(localModelStatus, draft.meetingSttModel);
   const isDownloading = downloadProgress !== null;
   const subtitleModelEntries = MODEL_LIBRARY.map((entry) => ({
     ...entry,
@@ -1274,6 +1305,39 @@ function SettingsView({
                     </div>
                   </div>
                 )}
+                <div className="meeting-transcript-panel">
+                  <div className="meeting-transcript-head">
+                    <strong>即時逐字稿</strong>
+                    <span className="meeting-transcript-status">
+                      {meetingViewState.sessionState === 'streaming'
+                        ? '會議進行中'
+                        : meetingViewState.sessionState === 'connecting'
+                          ? '準備中'
+                          : '尚未開始'}
+                    </span>
+                  </div>
+                  <div className="meeting-transcript-list">
+                    {meetingViewState.entries.length === 0 && !meetingViewState.partial ? (
+                      <p className="meeting-transcript-empty">開始會議字幕後，這裡會顯示即時逐字稿與翻譯。</p>
+                    ) : (
+                      <>
+                        {meetingViewState.entries.map((entry) => (
+                          <article key={entry.id} className="meeting-transcript-item">
+                            <p className="meeting-transcript-source">{entry.sourceText}</p>
+                            {entry.translatedText ? (
+                              <p className="meeting-transcript-translation">{entry.translatedText}</p>
+                            ) : null}
+                          </article>
+                        ))}
+                        {meetingViewState.partial ? (
+                          <article className="meeting-transcript-item meeting-transcript-item-partial">
+                            <p className="meeting-transcript-source">{meetingViewState.partial.sourceText}</p>
+                          </article>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </div>
               </article>
             </div>
 
@@ -1316,7 +1380,7 @@ function SettingsView({
                     <option value="ko">한국어</option>
                   </select>
                 </label>
-                <p className="model-hint">Milestone 0 先建立模式邊界與設定契約。會議字幕的雙來源 capture 與 notes generation 會在後續 milestone 實作。</p>
+                <p className="model-hint">目前先提供單 session 會議字幕骨架。speaker attribution、會議記錄生成與雙來源混流會在後續 milestone 補齊。</p>
               </article>
             </div>
           </div>
@@ -1421,14 +1485,27 @@ function SettingsView({
         ) : activeSettingsTab === 'meeting' ? (
           <>
             <button
+              disabled={!meetingModelsReady}
               onClick={async () => {
                 const nextSettings = {
                   ...draft,
                 };
                 await onSave(nextSettings);
+                await window.app.startSession(buildSessionConfig(nextSettings, 'meeting'));
               }}
             >
-              儲存會議字幕設定
+              {!meetingModelsReady
+                ? '需要下載模型'
+                : meetingViewState.sessionState === 'streaming' || meetingViewState.sessionState === 'connecting'
+                  ? '重新開始'
+                  : '開始會議字幕'}
+            </button>
+            <button
+              className="secondary"
+              disabled={meetingViewState.sessionState !== 'streaming' && meetingViewState.sessionState !== 'connecting'}
+              onClick={() => window.app.stopSession()}
+            >
+              停止
             </button>
           </>
         ) : (
@@ -1460,6 +1537,7 @@ export function App() {
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const captionState = useCaptionState();
   const dictationState = useDictationState();
+  const meetingState = useMeetingState();
   const overlayMode = useOverlayMode();
   const overlayRoute = isOverlayRoute();
 
@@ -1528,5 +1606,5 @@ export function App() {
     return <OverlayView viewState={captionState} dictationState={dictationState} settings={settings} overlayMode={overlayMode} />;
   }
 
-  return <SettingsView settings={settings} devices={devices} viewState={captionState} dictationViewState={dictationState} modelStatus={modelStatus} onSave={onSave} />;
+  return <SettingsView settings={settings} devices={devices} viewState={captionState} dictationViewState={dictationState} meetingViewState={meetingState} modelStatus={modelStatus} onSave={onSave} />;
 }

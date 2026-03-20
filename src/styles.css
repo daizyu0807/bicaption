@@ -508,6 +508,66 @@ button:disabled {
   white-space: nowrap;
 }
 
+.meeting-transcript-panel {
+  display: grid;
+  gap: var(--settings-space-2);
+  margin-top: var(--settings-space-2);
+  padding-top: var(--settings-space-2);
+  border-top: 1px solid var(--settings-color-border);
+}
+
+.meeting-transcript-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--settings-space-2);
+  font-size: 0.78rem;
+  color: var(--settings-color-text-muted);
+}
+
+.meeting-transcript-status {
+  font-size: 0.72rem;
+  color: var(--settings-color-text-soft);
+}
+
+.meeting-transcript-list {
+  display: grid;
+  gap: var(--settings-space-2);
+  max-height: 240px;
+  min-height: 120px;
+  padding: var(--settings-space-2);
+  overflow-y: auto;
+  border-radius: var(--settings-radius-md);
+  background: var(--settings-color-muted-surface);
+  border: 1px solid var(--settings-color-border);
+}
+
+.meeting-transcript-item {
+  display: grid;
+  gap: 4px;
+}
+
+.meeting-transcript-item-partial {
+  opacity: 0.8;
+}
+
+.meeting-transcript-source,
+.meeting-transcript-translation,
+.meeting-transcript-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.meeting-transcript-source {
+  color: var(--settings-color-text);
+}
+
+.meeting-transcript-translation,
+.meeting-transcript-empty {
+  color: var(--settings-color-text-muted);
+}
+
 
 .error-text {
   color: #c24a45;
