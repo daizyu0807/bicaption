@@ -1,5 +1,5 @@
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { createWriteStream, existsSync, lstatSync, mkdirSync, renameSync, rmSync, symlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import https from 'node:https';
@@ -52,6 +52,7 @@ export class ModelDownloader extends EventEmitter {
     super();
     this.pythonDir = modelDir;
     this.huggingFaceHome = huggingFaceHome;
+    this.migrateLegacyHuggingFaceCache();
   }
 
   checkStatus(): ModelStatus {
@@ -283,6 +284,29 @@ export class ModelDownloader extends EventEmitter {
       });
       child.on('error', reject);
     });
+  }
+
+  private migrateLegacyHuggingFaceCache() {
+    const managedHubDir = join(this.huggingFaceHome, 'hub');
+    if (existsSync(managedHubDir)) {
+      return;
+    }
+
+    const legacyHubDir = join(process.env.HOME || '', '.cache', 'huggingface', 'hub');
+    if (!legacyHubDir || !existsSync(legacyHubDir)) {
+      return;
+    }
+
+    try {
+      mkdirSync(dirname(managedHubDir), { recursive: true });
+      const legacyStat = lstatSync(legacyHubDir);
+      if (!legacyStat.isDirectory() && !legacyStat.isSymbolicLink()) {
+        return;
+      }
+      symlinkSync(legacyHubDir, managedHubDir, 'dir');
+    } catch {
+      // Ignore migration failures and fall back to downloading into the managed cache.
+    }
   }
 
   private checkMlxWhisperModelReady(modelId: string): boolean {
