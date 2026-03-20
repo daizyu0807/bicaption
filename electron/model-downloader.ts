@@ -316,6 +316,17 @@ export class ModelDownloader extends EventEmitter {
   }
 
   private checkMlxWhisperModelReady(modelId: string): boolean {
+    if (app.isPackaged) {
+      const repoDir = join(
+        this.huggingFaceHome,
+        'hub',
+        `models--${modelId.replace(/\//g, '--')}`,
+      );
+      const refsMain = join(repoDir, 'refs', 'main');
+      const snapshotsDir = join(repoDir, 'snapshots');
+      return existsSync(refsMain) && existsSync(snapshotsDir);
+    }
+
     try {
       execFileSync(this.getPythonCommand(), [
         '-c',
