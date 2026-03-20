@@ -405,8 +405,10 @@ button:disabled {
 
 .settings-subgroup-compact {
   gap: var(--settings-space-1);
-  padding-top: var(--settings-space-2);
-  padding-bottom: var(--settings-space-2);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 .settings-toggle-stack {
@@ -491,6 +493,7 @@ button:disabled {
   display: grid;
   gap: var(--settings-space-1);
   align-content: start;
+  margin-top: 2px;
 }
 
 .save-path-text {
