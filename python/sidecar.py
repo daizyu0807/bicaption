@@ -1037,6 +1037,8 @@ class MeetingChunk:
 class MlxWhisperBatchTranscriber:
     """Batch-only dictation transcriber backed by MLX Whisper."""
 
+    _probe_result: bool | None = None
+
     def __init__(self, source_lang: str = "auto") -> None:
         self.finalized_ids: set[str] = set()
         self._segment_counter = 0
@@ -1051,14 +1053,35 @@ class MlxWhisperBatchTranscriber:
     def stop(self) -> None:
         return
 
+    @classmethod
+    def _probe_runtime_ready(cls) -> bool:
+        if cls._probe_result is not None:
+            return cls._probe_result
+        try:
+            result = subprocess.run(
+                [sys.executable, "--mlx-whisper-probe"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            cls._probe_result = result.returncode == 0 and "READY" in result.stdout
+            trace_debug(
+                "mlx whisper probe "
+                f"returncode={result.returncode} "
+                f"stdout={result.stdout.strip()!r} "
+                f"stderr={result.stderr.strip()[:240]!r}"
+            )
+        except Exception as exc:
+            cls._probe_result = False
+            trace_debug(f"mlx whisper probe exception={exc}")
+        return cls._probe_result
+
     def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
         if audio.size < MIN_SPEECH_SAMPLES:
             return []
-
-        try:
-            import mlx_whisper  # type: ignore
-        except Exception as exc:
-            raise RuntimeError(f"dependency missing: {exc}") from exc
+        if not self._probe_runtime_ready():
+            raise RuntimeError("dependency missing: MLX runtime probe failed")
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
             temp_path = handle.name
@@ -1070,15 +1093,22 @@ class MlxWhisperBatchTranscriber:
                 wav_file.setsampwidth(2)
                 wav_file.setframerate(SAMPLE_RATE)
                 wav_file.writeframes(pcm16.tobytes())
-
-            kwargs: dict[str, Any] = {
-                "path_or_hf_repo": MLX_WHISPER_MODEL,
-            }
+            command = [sys.executable, "--mlx-whisper-transcribe", "--audio-path", temp_path]
             if self._source_lang:
-                kwargs["language"] = self._source_lang
-            result = mlx_whisper.transcribe(temp_path, **kwargs)
-            text = normalize_text(str(result.get("text", "")))
-            detected_lang = normalize_text(str(result.get("language", self._source_lang or "")))
+                command.extend(["--source-lang", self._source_lang])
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+            if result.returncode != 0:
+                stderr = result.stderr.strip() or result.stdout.strip()
+                raise RuntimeError(f"MLX worker failed: {stderr or f'exit {result.returncode}'}")
+            payload = json.loads(result.stdout)
+            text = normalize_text(str(payload.get("text", "")))
+            detected_lang = normalize_text(str(payload.get("language", self._source_lang or "")))
         finally:
             try:
                 os.unlink(temp_path)
@@ -2804,10 +2834,42 @@ def _apply_model_dir(model_dir: str) -> None:
     SILERO_VAD_MODEL = os.path.join(model_dir, "silero_vad.onnx")
 
 
+def run_mlx_whisper_probe() -> int:
+    import mlx.core as mx  # type: ignore
+
+    mx.random.key(0)
+    sys.stdout.write("READY\n")
+    return 0
+
+
+def run_mlx_whisper_transcribe(audio_path: str, source_lang: str | None) -> int:
+    import mlx_whisper  # type: ignore
+
+    kwargs: dict[str, Any] = {"path_or_hf_repo": MLX_WHISPER_MODEL}
+    normalized_source = normalize_mlx_whisper_lang(source_lang or "auto")
+    if normalized_source:
+        kwargs["language"] = normalized_source
+    result = mlx_whisper.transcribe(audio_path, **kwargs)
+    sys.stdout.write(
+        json.dumps(
+            {
+                "text": str(result.get("text", "")),
+                "language": str(result.get("language", normalized_source or "")),
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def cli() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--list-devices", action="store_true")
     parser.add_argument("--enroll-speaker", action="store_true")
+    parser.add_argument("--mlx-whisper-probe", action="store_true")
+    parser.add_argument("--mlx-whisper-transcribe", action="store_true")
+    parser.add_argument("--audio-path", type=str, default="")
+    parser.add_argument("--source-lang", type=str, default="")
     parser.add_argument("--device-id", type=str, default="")
     parser.add_argument("--duration-sec", type=float, default=8.0)
     parser.add_argument("--model-dir", type=str, default=None)
@@ -2826,6 +2888,14 @@ def cli() -> int:
         result = enroll_local_speaker(args.device_id, args.duration_sec)
         sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
         return 0
+
+    if args.mlx_whisper_probe:
+        return run_mlx_whisper_probe()
+
+    if args.mlx_whisper_transcribe:
+        if not args.audio_path:
+            raise RuntimeError("--audio-path is required for --mlx-whisper-transcribe")
+        return run_mlx_whisper_transcribe(args.audio_path, args.source_lang)
 
     return SidecarApp().run()
 
