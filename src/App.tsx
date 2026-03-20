@@ -405,6 +405,10 @@ function getRecommendedSubtitleSttModel(sourceLang: string, currentModel?: strin
   return sourceLang === 'auto' ? 'sensevoice' : 'apple-stt';
 }
 
+function getRecommendedDictationSttModel(): string {
+  return 'whisper-mlx';
+}
+
 function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle'): CaptionConfig {
   const isDictation = mode === 'dictation';
   const isMeeting = mode === 'meeting';
@@ -946,13 +950,7 @@ function SettingsView({
                     value={draft.dictationSourceLang}
                     onChange={(event) => {
                       const lang = event.target.value;
-                      const recommended = draft.dictationSttModel === 'whisper-mlx'
-                        ? 'whisper-mlx'
-                        : lang === 'auto'
-                          ? 'sensevoice'
-                          : draft.dictationSttModel === 'sensevoice'
-                            ? 'sensevoice'
-                            : 'apple-stt';
+                      const recommended = getRecommendedDictationSttModel();
                       setDraft({ ...draft, dictationSourceLang: lang, dictationSttModel: recommended });
                     }}
                   >
@@ -1055,7 +1053,7 @@ function SettingsView({
                 <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
               )}
               {draft.dictationSttModel === 'whisper-mlx' && (
-                <p className="model-hint">MLX Whisper 走停止後 batch 轉錄，適合高品質 dictation；首次使用可能需要下載模型。</p>
+                <p className="model-hint">MLX Whisper 是目前推薦的 dictation 引擎，效果最好；走停止後 batch 轉錄。</p>
               )}
             </article>
           </div>

@@ -13,7 +13,7 @@ export const defaultSettings: AppSettings = {
   subtitleDeviceId: '',
   dictationDeviceId: '',
   outputDeviceId: '',
-  dictationSttModel: 'sensevoice',
+  dictationSttModel: 'whisper-mlx',
   dictationSourceLang: 'zh-TW',
   dictationHotkey: {
     keyCode: 59,
