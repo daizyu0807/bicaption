@@ -74,6 +74,21 @@ function getTrayIconPath() {
   return join(projectRoot, 'build', 'icon.icns');
 }
 
+function createTrayTemplateImage() {
+  const svg = `
+    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+      <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 5.25h12" stroke-width="1.8"/>
+        <path d="M3 12.75h12" stroke-width="1.8"/>
+        <path d="M5.25 9c1.1-1.2 2.2-1.2 3.3 0s2.2 1.2 3.3 0 2.2-1.2 3.3 0" stroke-width="1.8"/>
+      </g>
+    </svg>
+  `.trim();
+  const image = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+  image.setTemplateImage(true);
+  return image.resize({ width: 18, height: 18 });
+}
+
 function formatSaveFilename(date: Date): string {
   const yy = String(date.getFullYear()).slice(2);
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -934,9 +949,9 @@ function createTray() {
     return;
   }
   const trayIconPath = getTrayIconPath();
-  const baseTrayImage = nativeImage.createFromPath(trayIconPath);
-  traceMain(`createTray iconPath=${trayIconPath} empty=${String(baseTrayImage.isEmpty())}`);
-  const trayImage = baseTrayImage.resize({ width: 18, height: 18 });
+  const fileImage = nativeImage.createFromPath(trayIconPath);
+  const trayImage = createTrayTemplateImage();
+  traceMain(`createTray iconPath=${trayIconPath} fileEmpty=${String(fileImage.isEmpty())} using=inline-template`);
   tray = new Tray(trayImage);
   tray.setTitle('');
   tray.setToolTip('BiCaption');
