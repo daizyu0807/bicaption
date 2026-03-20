@@ -98,6 +98,33 @@ class SpeakerAudioQuality:
     frame_count: int
 
 
+@dataclass
+class MeetingSpeakerMatchStats:
+    attempted: int = 0
+    verified: int = 0
+    unverified: int = 0
+    skipped_low_quality: int = 0
+    skipped_fingerprint_unavailable: int = 0
+    skipped_no_reference: int = 0
+    confidence_sum: float = 0.0
+    confidence_max: float = 0.0
+
+
+def summarize_meeting_match_stats(stats: MeetingSpeakerMatchStats) -> str:
+    average_confidence = stats.confidence_sum / stats.attempted if stats.attempted > 0 else 0.0
+    return (
+        "meeting speaker summary "
+        f"attempted={stats.attempted} "
+        f"verified={stats.verified} "
+        f"unverified={stats.unverified} "
+        f"skipped_low_quality={stats.skipped_low_quality} "
+        f"skipped_fingerprint_unavailable={stats.skipped_fingerprint_unavailable} "
+        f"skipped_no_reference={stats.skipped_no_reference} "
+        f"avg_confidence={average_confidence:.3f} "
+        f"max_confidence={stats.confidence_max:.3f}"
+    )
+
+
 def count_words(text: str) -> int:
     return len([token for token in re.split(r"\s+", normalize_text(text)) if token])
 
@@ -2187,6 +2214,7 @@ class SidecarApp:
         self.meeting_last_turn_source = ""
         self.meeting_last_turn_end_ms = 0
         self.meeting_local_speaker_reference: list[float] | None = None
+        self.meeting_match_stats = MeetingSpeakerMatchStats()
         self.translation_worker = threading.Thread(target=self._translation_loop, daemon=True)
         self.translation_worker.start()
 
@@ -2265,6 +2293,7 @@ class SidecarApp:
             self.meeting_last_turn_source = ""
             self.meeting_last_turn_end_ms = 0
             self.meeting_local_speaker_reference = parse_speaker_fingerprint(self.config.meeting_local_speaker_fingerprint)
+            self.meeting_match_stats = MeetingSpeakerMatchStats()
         self.stop_event.clear()
         self.active = True
         emit({"type": "session_state", "state": "connecting", "detail": f"Connecting to {self.config.device_id}"})
@@ -2372,6 +2401,8 @@ class SidecarApp:
         self._stop_transcriber(self.meeting_system_transcriber)
         self.meeting_mic_transcriber = None
         self.meeting_system_transcriber = None
+        if self.config is not None and self.config.mode == "meeting":
+            trace_debug(f"{summarize_meeting_match_stats(self.meeting_match_stats)} session={self.config.session_id}")
         if self.active:
             self.active = False
             emit({"type": "session_state", "state": "stopped"})
@@ -2429,6 +2460,23 @@ class SidecarApp:
             return "microphone", "我方"
         return "system", "遠端"
 
+    def _record_meeting_match_skip(self, reason: str) -> None:
+        if reason == "low_quality":
+            self.meeting_match_stats.skipped_low_quality += 1
+        elif reason == "fingerprint_unavailable":
+            self.meeting_match_stats.skipped_fingerprint_unavailable += 1
+        elif reason == "no_reference":
+            self.meeting_match_stats.skipped_no_reference += 1
+
+    def _record_meeting_match_result(self, confidence: float, verified: bool) -> None:
+        self.meeting_match_stats.attempted += 1
+        self.meeting_match_stats.confidence_sum += confidence
+        self.meeting_match_stats.confidence_max = max(self.meeting_match_stats.confidence_max, confidence)
+        if verified:
+            self.meeting_match_stats.verified += 1
+        else:
+            self.meeting_match_stats.unverified += 1
+
     def _classify_meeting_speaker(self, source: str, audio: np.ndarray) -> tuple[str, str, float]:
         if self.config is None or source != "microphone":
             return "remote-default" if source == "system" else "source-default", "", 0.0
@@ -2436,9 +2484,11 @@ class SidecarApp:
             return "source-default", "", 0.0
         reference = self.meeting_local_speaker_reference
         if reference is None:
+            self._record_meeting_match_skip("no_reference")
             return "unverified-local", "", 0.0
         quality = assess_speaker_audio(audio, min_speech_ratio=LOCAL_SPEAKER_MIN_RUNTIME_SPEECH_RATIO)
         if not quality.valid:
+            self._record_meeting_match_skip("low_quality")
             trace_debug(
                 f"meeting speaker match skipped session={self.config.session_id} "
                 f"reason=low_speech_quality speech_ratio={quality.speech_ratio:.2f} "
@@ -2447,14 +2497,17 @@ class SidecarApp:
             return "source-default", self.config.meeting_local_speaker_profile_id, 0.0
         candidate = build_speaker_fingerprint(audio, min_speech_ratio=LOCAL_SPEAKER_MIN_RUNTIME_SPEECH_RATIO)
         if candidate is None:
+            self._record_meeting_match_skip("fingerprint_unavailable")
             trace_debug(f"meeting speaker match skipped session={self.config.session_id} reason=fingerprint_unavailable")
             return "source-default", self.config.meeting_local_speaker_profile_id, 0.0
         confidence = compare_speaker_fingerprints(reference, candidate)
+        verified = confidence >= LOCAL_SPEAKER_MATCH_THRESHOLD
+        self._record_meeting_match_result(confidence, verified)
         trace_debug(
             f"meeting speaker match session={self.config.session_id} confidence={confidence:.3f} "
             f"threshold={LOCAL_SPEAKER_MATCH_THRESHOLD:.2f} speech_ratio={quality.speech_ratio:.2f}"
         )
-        if confidence >= LOCAL_SPEAKER_MATCH_THRESHOLD:
+        if verified:
             return "verified-local", self.config.meeting_local_speaker_profile_id, confidence
         return "unverified-local", self.config.meeting_local_speaker_profile_id, confidence
 

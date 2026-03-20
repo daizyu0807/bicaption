@@ -56,6 +56,7 @@ from sidecar import (
     compare_speaker_fingerprints,
     get_local_llm_python_bin,
     LocalLlmRewriteProvider,
+    MeetingSpeakerMatchStats,
     FallbackTranslator,
     build_dictation_final_event,
     build_dictation_state_event,
@@ -68,6 +69,7 @@ from sidecar import (
     parse_speaker_fingerprint,
     serialize_speaker_fingerprint,
     should_attempt_dictation_batch_fallback,
+    summarize_meeting_match_stats,
 )
 
 
@@ -156,6 +158,26 @@ class TranslationProviderTest(unittest.TestCase):
         quality = assess_speaker_audio(audio, min_speech_ratio=0.5)
         self.assertFalse(quality.valid)
         self.assertLess(quality.speech_ratio, 0.5)
+
+    def test_meeting_match_stats_summary_formats_counts_and_confidence(self) -> None:
+        summary = summarize_meeting_match_stats(MeetingSpeakerMatchStats(
+            attempted=3,
+            verified=2,
+            unverified=1,
+            skipped_low_quality=4,
+            skipped_fingerprint_unavailable=1,
+            skipped_no_reference=2,
+            confidence_sum=2.1,
+            confidence_max=0.91,
+        ))
+        self.assertIn("attempted=3", summary)
+        self.assertIn("verified=2", summary)
+        self.assertIn("unverified=1", summary)
+        self.assertIn("skipped_low_quality=4", summary)
+        self.assertIn("skipped_fingerprint_unavailable=1", summary)
+        self.assertIn("skipped_no_reference=2", summary)
+        self.assertIn("avg_confidence=0.700", summary)
+        self.assertIn("max_confidence=0.910", summary)
 
     def test_dictation_final_event_normalizes_buffered_text(self) -> None:
         event = build_dictation_final_event("session-1", ["  hello", "world  "], 10, 40)
