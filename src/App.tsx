@@ -424,6 +424,12 @@ function getPermissionLabel(status: { trusted: boolean } | { available: boolean;
 
 const MODEL_LIBRARY = [
   {
+    key: 'moonshine',
+    label: 'Moonshine',
+    sizeLabel: '~0.1 GB+',
+    description: '低延遲串流語音辨識，優先用於雙語字幕與會議字幕。',
+  },
+  {
     key: 'sensevoice',
     label: 'SenseVoice',
     sizeLabel: '~0.9 GB',
@@ -457,6 +463,8 @@ const MODEL_LIBRARY = [
 
 function isModelReady(status: ModelStatus | null, key: (typeof MODEL_LIBRARY)[number]['key']) {
   switch (key) {
+    case 'moonshine':
+      return true;
     case 'sensevoice':
       return status?.sensevoice ?? false;
     case 'whisper-tiny-en':
@@ -1299,11 +1307,16 @@ function SettingsView({
                     </div>
                     <div className="model-card-meta">
                       <span>大小 {sizeLabel}</span>
+                      {key === 'moonshine' && <span>目前走官方 moonshine-voice 套件與專案內 model cache</span>}
                       {key === 'sensevoice' && <span>推薦用於繁體中文與混語</span>}
                       {key === 'vad' && <span>字幕、語音輸入與會議字幕都需要</span>}
                     </div>
                     <div className="model-card-actions">
-                      {!ready ? (
+                      {key === 'moonshine' ? (
+                        <button className="secondary" disabled>
+                          啟用時自動準備
+                        </button>
+                      ) : !ready ? (
                         <button
                           className="secondary"
                           disabled={isDownloading}

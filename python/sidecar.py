@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import math
 import os
@@ -33,6 +34,7 @@ ZIPFORMER_KOREAN_MODEL_DIR = os.path.join(MODEL_BASE_DIR, "sherpa-onnx-zipformer
 SILERO_VAD_MODEL = os.path.join(MODEL_BASE_DIR, "silero_vad.onnx")
 APPLE_STT_BIN = os.path.join(SCRIPT_DIR, "apple-stt")
 LOCAL_LLM_REWRITE_BIN = os.path.join(SCRIPT_DIR, "local-llm-rewrite.py")
+MOONSHINE_CACHE_DIR = os.path.join(MODEL_BASE_DIR, "moonshine_voice")
 DEFAULT_EMIT_CONTEXT = {
     "mode": "subtitle",
     "sessionId": "bootstrap",
@@ -94,6 +96,21 @@ def looks_like_garbage_text(text: str) -> bool:
 
 def make_segment_id(start_ms: int, end_ms: int) -> str:
     return f"seg-{round(start_ms / 100)}-{round(end_ms / 100)}"
+
+
+def normalize_moonshine_lang(source_lang: str) -> str | None:
+    normalized = source_lang.lower()
+    if normalized in {"en", "english"}:
+        return "en"
+    if normalized in {"zh", "zh-cn", "zh-tw", "zh-hant", "chinese"}:
+        return "zh"
+    if normalized in {"ja", "japanese"}:
+        return "ja"
+    if normalized in {"ko", "korean"}:
+        return "ko"
+    if normalized == "auto":
+        return None
+    return None
 
 
 def build_dictation_state_event(state: str, detail: str | None = None) -> dict[str, Any]:
@@ -718,7 +735,17 @@ def get_dictation_rewrite_provider(rewrite_mode: str) -> DictationRewriteProvide
 def get_streaming_transcriber(config: SessionConfig):
     if config.stt_model == "moonshine":
         emit({"type": "session_state", "state": "connecting", "detail": "Preparing Moonshine streaming provider..."})
-        return MoonshineTranscriber(source_lang=config.source_lang)
+        try:
+            return MoonshineTranscriber(source_lang=config.source_lang, update_interval_ms=config.partial_stable_ms)
+        except Exception as error:
+            emit({
+                "type": "error",
+                "code": "moonshine_fallback",
+                "message": f"Moonshine unavailable for this session, falling back to SenseVoice: {error}",
+                "recoverable": True,
+            })
+            emit({"type": "session_state", "state": "connecting", "detail": "Falling back to SenseVoice..."})
+            return SenseVoiceTranscriber()
     if config.stt_model == "apple-stt":
         emit({"type": "session_state", "state": "connecting", "detail": "Starting Apple Speech Recognition..."})
         transcriber = AppleSttTranscriber(
@@ -954,40 +981,121 @@ class SenseVoiceTranscriber:
 
 
 class MoonshineTranscriber:
-    """Experimental Moonshine hook.
+    """Live Moonshine streaming transcriber with project-local model cache."""
 
-    Current Milestone 1 behavior keeps the provider contract explicit while
-    falling back to SenseVoice until a dedicated Moonshine runtime is wired in.
-    """
+    def __init__(self, source_lang: str = "auto", update_interval_ms: int = 500) -> None:
+        moonshine_lang = normalize_moonshine_lang(source_lang)
+        if moonshine_lang is None:
+            raise RuntimeError("Moonshine requires an explicit supported source language (en / zh / ja / ko).")
 
-    def __init__(self, source_lang: str = "auto") -> None:
-        self._fallback = SenseVoiceTranscriber()
-        self.finalized_ids = self._fallback.finalized_ids
-        self._warned = False
-        self._source_lang = source_lang
+        os.environ.setdefault("MOONSHINE_VOICE_CACHE", MOONSHINE_CACHE_DIR)
+        moonshine_voice = importlib.import_module("moonshine_voice")
+        transcriber_mod = importlib.import_module("moonshine_voice.transcriber")
 
-    def _maybe_warn(self) -> None:
-        if self._warned:
-            return
-        self._warned = True
-        emit({
-            "type": "error",
-            "code": "moonshine_fallback",
-            "message": "Moonshine provider is not wired yet; falling back to SenseVoice for this session.",
-            "recoverable": True,
-        })
+        ModelArch = moonshine_voice.ModelArch
+        get_model_for_language = moonshine_voice.get_model_for_language
+        self._line_completed_type = transcriber_mod.LineCompleted
+        self._line_updated_type = transcriber_mod.LineUpdated
+        self._line_text_changed_type = transcriber_mod.LineTextChanged
+        self._transcriber_cls = transcriber_mod.Transcriber
+
+        preferred_arch = ModelArch.SMALL_STREAMING if moonshine_lang == "en" else ModelArch.BASE
+        model_path, model_arch = get_model_for_language(moonshine_lang, preferred_arch)
+        self._detected_lang = moonshine_lang
+        self._session_base_ms = now_ms()
+        self._queued_chunks: list[TranscriptChunk] = []
+        self._seen_completed_line_ids: set[int] = set()
+        self.finalized_ids: set[str] = set()
+
+        update_interval = max(0.2, update_interval_ms / 1000.0)
+        self._transcriber = self._transcriber_cls(
+            model_path=str(model_path),
+            model_arch=model_arch,
+            update_interval=update_interval,
+        )
+        self._stream = self._transcriber.create_stream(update_interval=update_interval)
+        self._stream.add_listener(self._on_event)
+        self._stream.start()
+
+    def _line_to_chunk(self, line: Any) -> TranscriptChunk:
+        started_at_ms = self._session_base_ms + int(float(line.start_time) * 1000)
+        ended_at_ms = started_at_ms + int(float(line.duration) * 1000)
+        segment_id = f"moonshine-{line.line_id}"
+        return TranscriptChunk(
+            mode=_emit_context["mode"],
+            session_id=_emit_context["sessionId"],
+            segment_id=segment_id,
+            source_text=normalize_text(str(line.text)),
+            started_at_ms=started_at_ms,
+            ended_at_ms=ended_at_ms,
+            confidence=0.0,
+            detected_lang=self._detected_lang,
+        )
+
+    def _on_event(self, event: Any) -> None:
+        if isinstance(event, self._line_completed_type):
+            line = event.line
+            if line.line_id in self._seen_completed_line_ids:
+                return
+            self._seen_completed_line_ids.add(line.line_id)
+            chunk = self._line_to_chunk(line)
+            if chunk.source_text:
+                self._queued_chunks.append(chunk)
+
+    def _drain_chunks(self) -> list[TranscriptChunk]:
+        if not self._queued_chunks:
+            return []
+        chunks = self._queued_chunks
+        self._queued_chunks = []
+        return chunks
 
     def feed_audio(self, samples: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
-        self._maybe_warn()
-        return self._fallback.feed_audio(samples, base_time_ms)
+        if samples.size == 0:
+            return []
+        self._stream.add_audio(samples.astype(np.float32).tolist(), sample_rate=SAMPLE_RATE)
+        return self._drain_chunks()
 
     def flush(self, base_time_ms: int) -> list[TranscriptChunk]:
-        self._maybe_warn()
-        return self._fallback.flush(base_time_ms)
+        try:
+            self._stream.stop()
+        except Exception:
+            pass
+        return self._drain_chunks()
+
+    def stop(self) -> None:
+        try:
+            self._stream.close()
+        except Exception:
+            pass
 
     def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
-        self._maybe_warn()
-        return self._fallback.transcribe_buffer(audio, base_time_ms)
+        temp_stream = self._transcriber.create_stream(update_interval=9999)
+        local_chunks: list[TranscriptChunk] = []
+
+        def listener(event: Any) -> None:
+            if isinstance(event, self._line_completed_type):
+                line = event.line
+                chunk = TranscriptChunk(
+                    mode=_emit_context["mode"],
+                    session_id=_emit_context["sessionId"],
+                    segment_id=f"moonshine-{line.line_id}",
+                    source_text=normalize_text(str(line.text)),
+                    started_at_ms=base_time_ms + int(float(line.start_time) * 1000),
+                    ended_at_ms=base_time_ms + int((float(line.start_time) + float(line.duration)) * 1000),
+                    confidence=0.0,
+                    detected_lang=self._detected_lang,
+                )
+                if chunk.source_text:
+                    local_chunks.append(chunk)
+
+        temp_stream.add_listener(listener)
+        temp_stream.start()
+        temp_stream.add_audio(audio.astype(np.float32).tolist(), sample_rate=SAMPLE_RATE)
+        try:
+            temp_stream.stop()
+        finally:
+            temp_stream.close()
+        return local_chunks
 
 
 class WhisperTinyEnTranscriber:
@@ -1871,6 +1979,14 @@ class SidecarApp:
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.5)
         self.thread = None
+        if self.config is not None and self.config.mode != "dictation" and self.transcriber is not None:
+            flush = getattr(self.transcriber, "flush", None)
+            if callable(flush):
+                try:
+                    for chunk in flush(now_ms()):
+                        self._emit_final_chunk(chunk)
+                except Exception as error:
+                    trace_debug(f"stream flush failed session={self.config.session_id} error={error}")
         if self.config is not None and self.config.mode == "dictation" and self.transcriber is not None:
             flush = getattr(self.transcriber, "flush", None)
             if callable(flush):
@@ -1903,7 +2019,7 @@ class SidecarApp:
         if self.capture is not None:
             self.capture.stop()
             self.capture = None
-        if isinstance(self.transcriber, AppleSttTranscriber):
+        if isinstance(self.transcriber, AppleSttTranscriber) or isinstance(self.transcriber, MoonshineTranscriber):
             self.transcriber.stop()
         self.transcriber = None
         if self.active:

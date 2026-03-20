@@ -50,6 +50,7 @@ from sidecar import (
     looks_like_garbage_text,
     make_segment_id,
     normalize_text,
+    normalize_moonshine_lang,
     parse_dictation_dictionary,
 )
 
@@ -74,6 +75,15 @@ class TranslationProviderTest(unittest.TestCase):
 
     def test_allows_normal_sentence(self) -> None:
         self.assertFalse(looks_like_garbage_text("People dream high in the quiet of the night"))
+
+    def test_normalize_moonshine_lang_maps_supported_languages(self) -> None:
+        self.assertEqual(normalize_moonshine_lang("en"), "en")
+        self.assertEqual(normalize_moonshine_lang("zh-TW"), "zh")
+        self.assertEqual(normalize_moonshine_lang("ja"), "ja")
+        self.assertEqual(normalize_moonshine_lang("ko"), "ko")
+
+    def test_normalize_moonshine_lang_rejects_auto(self) -> None:
+        self.assertIsNone(normalize_moonshine_lang("auto"))
 
     def test_dictation_state_event_includes_state(self) -> None:
         event = build_dictation_state_event("recording", "Dictation session started")

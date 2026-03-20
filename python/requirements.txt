@@ -5,3 +5,4 @@ deep-translator>=1.11.4
 opencc-python-reimplemented>=0.1.7
 mlx>=0.31.1
 mlx-lm>=0.31.1
+moonshine-voice>=0.0.51
