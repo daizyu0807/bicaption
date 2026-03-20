@@ -416,6 +416,56 @@ function getPermissionLabel(status: { trusted: boolean } | { available: boolean;
   return kind === 'accessibility' ? '未允許' : '未授權';
 }
 
+const MODEL_LIBRARY = [
+  {
+    key: 'sensevoice',
+    label: 'SenseVoice',
+    sizeLabel: '~0.9 GB',
+    description: '多語辨識主力模型，適合繁體中文、英文與混語場景。',
+  },
+  {
+    key: 'whisper-tiny-en',
+    label: 'Whisper tiny.en',
+    sizeLabel: '~80 MB',
+    description: '極輕量英文模型，適合低資源與快速驗證。',
+  },
+  {
+    key: 'whisper-small',
+    label: 'Whisper small',
+    sizeLabel: '~480 MB',
+    description: '英文準確率更高的 Whisper 模型，載入時間也較長。',
+  },
+  {
+    key: 'zipformer-ko',
+    label: 'Zipformer Korean',
+    sizeLabel: '~180 MB',
+    description: '韓文辨識模型，適合韓文字幕與口語輸入。',
+  },
+  {
+    key: 'vad',
+    label: 'Silero VAD',
+    sizeLabel: '~2 MB',
+    description: '語音活動偵測元件，負責切分說話片段。',
+  },
+] as const;
+
+function isModelReady(status: ModelStatus | null, key: (typeof MODEL_LIBRARY)[number]['key']) {
+  switch (key) {
+    case 'sensevoice':
+      return status?.sensevoice ?? false;
+    case 'whisper-tiny-en':
+      return status?.whisperTinyEn ?? false;
+    case 'whisper-small':
+      return status?.whisperSmall ?? false;
+    case 'zipformer-ko':
+      return status?.zipformerKo ?? false;
+    case 'vad':
+      return status?.vad ?? false;
+    default:
+      return false;
+  }
+}
+
 function getDictationOutputActionLabel(action: DictationOutputAction) {
   switch (action) {
     case 'copy':
@@ -486,7 +536,7 @@ function SettingsView({
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation'>('subtitle');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation' | 'models'>('subtitle');
   const [draft, setDraft] = useState(settings);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
@@ -509,14 +559,10 @@ function SettingsView({
   const selectedModelReady = modelReadyMap[draft.sttModel] ?? false;
   const modelsReady = draft.sttModel === 'apple-stt' || (selectedModelReady && (localModelStatus?.vad ?? true));
   const isDownloading = downloadProgress !== null;
-  const subtitleModelEntries = [
-    { key: 'sensevoice', label: 'SenseVoice', ready: localModelStatus?.sensevoice },
-    { key: 'whisper-tiny-en', label: 'Whisper tiny.en', ready: localModelStatus?.whisperTinyEn },
-    { key: 'whisper-small', label: 'Whisper small', ready: localModelStatus?.whisperSmall },
-    { key: 'zipformer-ko', label: 'Zipformer Ko', ready: localModelStatus?.zipformerKo },
-    { key: 'vad', label: 'VAD', ready: localModelStatus?.vad },
-  ] as const;
-  const shouldShowModelPanel = isDownloading || Boolean(downloadError) || subtitleModelEntries.some(({ ready }) => !ready);
+  const subtitleModelEntries = MODEL_LIBRARY.map((entry) => ({
+    ...entry,
+    ready: isModelReady(localModelStatus, entry.key),
+  }));
 
   useEffect(() => {
     setLocalModelStatus(modelStatus);
@@ -620,46 +666,23 @@ function SettingsView({
           >
             語音輸入
           </button>
+          <button
+            className={activeSettingsTab === 'models' ? 'settings-tab active' : 'settings-tab'}
+            onClick={() => setActiveSettingsTab('models')}
+          >
+            模型
+          </button>
         </div>
       </aside>
 
       <section className="settings-main">
         <header className="settings-main-header">
-          <h2 className="settings-main-title">{activeSettingsTab === 'subtitle' ? '雙語字幕' : '語音輸入'}</h2>
+          <h2 className="settings-main-title">
+            {activeSettingsTab === 'subtitle' ? '雙語字幕' : activeSettingsTab === 'dictation' ? '語音輸入' : '模型'}
+          </h2>
         </header>
 
         <div className={`settings-scroll settings-grid settings-grid-${activeSettingsTab}`}>
-          {activeSettingsTab === 'subtitle' && shouldShowModelPanel && (
-        <article className="panel model-panel panel-span-full">
-          <h2>Models</h2>
-          <div className="model-status-row">
-            {subtitleModelEntries.map(({ key, label, ready }) => (
-              <div key={key} className="model-row">
-                <span className={ready ? 'model-ok' : 'model-missing'}>
-                  {ready ? '✓' : '✗'} {label}
-                </span>
-                {!ready && (
-                  <button
-                    className="secondary"
-                    disabled={isDownloading}
-                    onClick={() => window.app.downloadModel(key)}
-                  >
-                    下載
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-          {isDownloading && downloadProgress && (
-            <div className="progress-bar-container">
-              <div className="progress-bar-fill" style={{ width: `${downloadProgress.percent}%` }} />
-            </div>
-          )}
-          {isDownloading && <p className="model-hint">{getDownloadLabel(downloadProgress)}</p>}
-          {downloadError && <p className="error-text">{downloadError}</p>}
-        </article>
-        )}
-
         {activeSettingsTab === 'dictation' && (
         <div className="dictation-workspace settings-content-grid">
           <div className="dictation-flow-grid">
@@ -1065,6 +1088,65 @@ function SettingsView({
           </div>
         </div>
         )}
+
+        {activeSettingsTab === 'models' && (
+          <div className="models-workspace">
+            <article className="dictation-section dictation-section-primary">
+              <h3 className="dictation-section-title">模型庫</h3>
+              <p className="model-hint">
+                模型下載是整個 app 共用的資源。雙語字幕與語音輸入都會使用這裡的模型狀態。
+              </p>
+              {isDownloading && downloadProgress && (
+                <div className="model-download-banner" role="status" aria-live="polite">
+                  <div className="progress-bar-container">
+                    <div className="progress-bar-fill" style={{ width: `${downloadProgress.percent}%` }} />
+                  </div>
+                  <p className="model-hint">{getDownloadLabel(downloadProgress)}</p>
+                </div>
+              )}
+              {downloadError && <p className="error-text">{downloadError}</p>}
+              <div className="model-catalog">
+                {subtitleModelEntries.map(({ key, label, ready, sizeLabel, description }) => (
+                  <section key={key} className="model-card">
+                    <div className="model-card-head">
+                      <div className="model-card-copy">
+                        <h4>{label}</h4>
+                        <p>{description}</p>
+                      </div>
+                      <span className={ready ? 'model-badge model-badge-ready' : 'model-badge'}>
+                        {ready ? '已下載' : '尚未下載'}
+                      </span>
+                    </div>
+                    <div className="model-card-meta">
+                      <span>大小 {sizeLabel}</span>
+                      {key === 'sensevoice' && <span>推薦用於繁體中文與混語</span>}
+                      {key === 'vad' && <span>字幕與語音輸入都需要</span>}
+                    </div>
+                    <div className="model-card-actions">
+                      {!ready ? (
+                        <button
+                          className="secondary"
+                          disabled={isDownloading}
+                          onClick={() => window.app.downloadModel(key)}
+                        >
+                          下載
+                        </button>
+                      ) : (
+                        <button
+                          className="secondary"
+                          disabled={isDownloading}
+                          onClick={() => window.app.downloadModel(key)}
+                        >
+                          重新下載
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </article>
+          </div>
+        )}
         </div>
         <footer className="bottom-bar">
         {activeSettingsTab === 'subtitle' ? (
@@ -1087,6 +1169,15 @@ function SettingsView({
             </button>
             <button className="secondary" disabled={!isStreaming} onClick={() => window.app.stopSession()}>
               停止
+            </button>
+          </>
+        ) : activeSettingsTab === 'models' ? (
+          <>
+            <button
+              disabled={isDownloading}
+              onClick={() => window.app.downloadModels()}
+            >
+              {isDownloading ? '下載中' : '下載所有模型'}
             </button>
           </>
         ) : (
