@@ -399,6 +399,8 @@ button:disabled {
   border-radius: var(--settings-radius-md);
   background: var(--settings-color-muted-surface);
   border: 1px solid var(--settings-color-border);
+  align-content: start;
+  align-self: start;
 }
 
 .settings-subgroup-compact {
@@ -410,6 +412,7 @@ button:disabled {
 .settings-toggle-stack {
   display: grid;
   gap: var(--settings-space-1);
+  align-content: start;
 }
 
 .settings-toggle-compact span {
@@ -487,6 +490,7 @@ button:disabled {
 .save-settings-stack {
   display: grid;
   gap: var(--settings-space-1);
+  align-content: start;
 }
 
 .save-path-text {
