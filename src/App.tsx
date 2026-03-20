@@ -567,11 +567,14 @@ function SettingsView({
   const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
   const localLlmEnabled = draft.dictationRewriteMode === 'rules-and-local-llm';
   const modelReadyMap: Record<string, boolean> = {
+    moonshine: true,
     sensevoice: localModelStatus?.sensevoice ?? false,
     'apple-stt': true,  // No model download needed — uses macOS built-in
   };
   const selectedModelReady = modelReadyMap[draft.sttModel] ?? false;
-  const modelsReady = draft.sttModel === 'apple-stt' || (selectedModelReady && (localModelStatus?.vad ?? true));
+  const modelsReady = draft.sttModel === 'sensevoice'
+    ? selectedModelReady && (localModelStatus?.vad ?? true)
+    : selectedModelReady;
   const isDownloading = downloadProgress !== null;
   const subtitleModelEntries = MODEL_LIBRARY.map((entry) => ({
     ...entry,
