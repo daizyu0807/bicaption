@@ -85,8 +85,9 @@ function createTrayTemplateImage() {
     </svg>
   `.trim();
   const image = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
-  image.setTemplateImage(true);
-  return image.resize({ width: 18, height: 18 });
+  const resized = image.resize({ width: 18, height: 18 });
+  resized.setTemplateImage(true);
+  return resized;
 }
 
 function describeNativeImage(image: Electron.NativeImage) {
@@ -96,8 +97,9 @@ function describeNativeImage(image: Electron.NativeImage) {
 
 function createNamedTrayImage() {
   const image = nativeImage.createFromNamedImage('NSImageNameActionTemplate');
-  image.setTemplateImage(true);
-  return image.resize({ width: 18, height: 18 });
+  const resized = image.resize({ width: 18, height: 18 });
+  resized.setTemplateImage(true);
+  return resized;
 }
 
 function createTrayImage() {
