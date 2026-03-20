@@ -312,15 +312,16 @@ function tryPasteClipboard(action: DictationOutputAction, expectedTarget: { appN
 
 function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionConfig {
   const isDictation = mode === 'dictation';
+  const isMeeting = mode === 'meeting';
   return {
     mode,
     sessionId: randomUUID(),
-    deviceId: isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
-    outputDeviceId: isDictation ? '' : settings.outputDeviceId,
-    sourceLang: isDictation ? settings.dictationSourceLang : settings.sourceLang,
-    targetLang: settings.targetLang,
-    sttModel: isDictation ? settings.dictationSttModel : settings.sttModel,
-    translateModel: settings.translateModel,
+    deviceId: isMeeting ? settings.meetingMicDeviceId : isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
+    outputDeviceId: isMeeting ? settings.meetingSystemAudioDeviceId : isDictation ? '' : settings.outputDeviceId,
+    sourceLang: isMeeting ? settings.meetingSourceLang : isDictation ? settings.dictationSourceLang : settings.sourceLang,
+    targetLang: isMeeting ? settings.meetingTargetLang : settings.targetLang,
+    sttModel: isMeeting ? settings.meetingSttModel : isDictation ? settings.dictationSttModel : settings.sttModel,
+    translateModel: isMeeting ? settings.meetingTranslateModel : settings.translateModel,
     chunkMs: isDictation ? settings.dictationChunkMs : settings.subtitleChunkMs,
     partialStableMs: isDictation ? settings.dictationEndpointMs : settings.subtitlePartialStableMs,
     beamSize: settings.beamSize,
@@ -335,6 +336,11 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionCo
     dictationMaxRewriteExpansionRatio: isDictation ? settings.dictationMaxRewriteExpansionRatio : undefined,
     dictationLocalLlmModel: isDictation ? settings.dictationLocalLlmModel : undefined,
     dictationLocalLlmRunner: isDictation ? settings.dictationLocalLlmRunner : undefined,
+    meetingSourceMode: isMeeting ? settings.meetingSourceMode : undefined,
+    meetingSpeakerLabelsEnabled: isMeeting ? settings.meetingSpeakerLabelsEnabled : undefined,
+    meetingNotesPrompt: isMeeting ? settings.meetingNotesPrompt : undefined,
+    meetingSaveTranscript: isMeeting ? settings.meetingSaveTranscript : undefined,
+    meetingTranscriptDirectory: isMeeting ? settings.meetingTranscriptDirectory : undefined,
   };
 }
 

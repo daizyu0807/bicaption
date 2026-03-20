@@ -124,6 +124,9 @@ export function reduceDictationEvent(state: DictationViewState, event: SidecarEv
     case 'partial_caption':
     case 'final_caption':
     case 'metrics':
+    case 'meeting_caption':
+      return state;
+    default:
       return state;
   }
 }

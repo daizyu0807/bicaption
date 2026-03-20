@@ -106,6 +106,7 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
     case 'session_stopped_ack':
     case 'dictation_state':
     case 'dictation_final':
+    case 'meeting_caption':
       return state;
     case 'error':
       if (state.activeSessionId && event.sessionId !== state.activeSessionId) {
@@ -116,6 +117,8 @@ export function reduceSidecarEvent(state: CaptionViewState, event: SidecarEvent)
         lastError: event.message,
         sessionState: event.recoverable ? state.sessionState : 'error',
       };
+    default:
+      return state;
   }
 }
 

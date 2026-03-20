@@ -1,5 +1,5 @@
 export type SessionState = 'idle' | 'connecting' | 'streaming' | 'error' | 'stopped';
-export type SessionMode = 'subtitle' | 'dictation';
+export type SessionMode = 'subtitle' | 'dictation' | 'meeting';
 export type DictationOutputAction = 'copy' | 'paste' | 'copy-and-paste';
 
 export interface DictationHotkeyBinding {
@@ -38,6 +38,11 @@ export interface CaptionConfig {
   dictationMaxRewriteExpansionRatio?: number;
   dictationLocalLlmModel?: string;
   dictationLocalLlmRunner?: string;
+  meetingSourceMode?: 'system-audio' | 'microphone' | 'dual';
+  meetingSpeakerLabelsEnabled?: boolean;
+  meetingNotesPrompt?: string;
+  meetingSaveTranscript?: boolean;
+  meetingTranscriptDirectory?: string;
 }
 
 interface SessionScopedEvent {
@@ -98,6 +103,36 @@ export interface DictationFinalEvent extends SessionScopedEvent {
   latencyMs: number;
 }
 
+export interface MeetingCaptionEvent extends SessionScopedEvent {
+  type: 'meeting_caption';
+  speakerId: string;
+  speakerLabel?: string;
+  source: 'microphone' | 'system';
+  sourceLang?: string;
+  targetLang: string;
+  text: string;
+  translatedText?: string;
+  tsStartMs: number;
+  tsEndMs: number;
+}
+
+export interface MeetingNotesRequest {
+  transcriptId: string;
+  targetLang: string;
+  promptTemplate: string;
+  includeActionItems: boolean;
+  includeRisks: boolean;
+  includeSpeakerNames: boolean;
+}
+
+export interface MeetingNotesResult {
+  summary: string;
+  actionItems: string[];
+  risks: string[];
+  decisions: string[];
+  rawPrompt: string;
+}
+
 export interface DictationOutputStatusEvent {
   type: 'dictation_output_status';
   action: DictationOutputAction;
@@ -123,6 +158,7 @@ export type SidecarEvent =
   | SessionStateEvent
   | DictationStateEvent
   | DictationFinalEvent
+  | MeetingCaptionEvent
   | SessionStoppedAckEvent
   | ErrorEvent;
 
@@ -168,6 +204,17 @@ export interface AppSettings {
   dictationDictionaryText: string;
   dictationLocalLlmModel: string;
   dictationLocalLlmRunner: string;
+  meetingMicDeviceId: string;
+  meetingSystemAudioDeviceId: string;
+  meetingSourceMode: 'system-audio' | 'microphone' | 'dual';
+  meetingSourceLang: string;
+  meetingTargetLang: string;
+  meetingSttModel: string;
+  meetingTranslateModel: string;
+  meetingSpeakerLabelsEnabled: boolean;
+  meetingNotesPrompt: string;
+  meetingSaveTranscript: boolean;
+  meetingTranscriptDirectory: string;
   saveEnabled: boolean;
   saveDirectory: string;
   overlayOpacity: number;

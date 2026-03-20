@@ -366,15 +366,16 @@ function isTranslationEnabled(settings: AppSettings): boolean {
 
 function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle'): CaptionConfig {
   const isDictation = mode === 'dictation';
+  const isMeeting = mode === 'meeting';
   return {
     mode,
     sessionId: crypto.randomUUID(),
-    deviceId: isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
-    outputDeviceId: settings.outputDeviceId,
-    sourceLang: isDictation ? settings.dictationSourceLang : settings.sourceLang,
-    targetLang: settings.targetLang,
-    sttModel: isDictation ? settings.dictationSttModel : settings.sttModel,
-    translateModel: settings.translateModel,
+    deviceId: isMeeting ? settings.meetingMicDeviceId : isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
+    outputDeviceId: isMeeting ? settings.meetingSystemAudioDeviceId : settings.outputDeviceId,
+    sourceLang: isMeeting ? settings.meetingSourceLang : isDictation ? settings.dictationSourceLang : settings.sourceLang,
+    targetLang: isMeeting ? settings.meetingTargetLang : settings.targetLang,
+    sttModel: isMeeting ? settings.meetingSttModel : isDictation ? settings.dictationSttModel : settings.sttModel,
+    translateModel: isMeeting ? settings.meetingTranslateModel : settings.translateModel,
     chunkMs: isDictation ? settings.dictationChunkMs : settings.subtitleChunkMs,
     partialStableMs: isDictation ? settings.dictationEndpointMs : settings.subtitlePartialStableMs,
     beamSize: settings.beamSize,
@@ -389,6 +390,11 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
     dictationMaxRewriteExpansionRatio: isDictation ? settings.dictationMaxRewriteExpansionRatio : undefined,
     dictationLocalLlmModel: isDictation ? settings.dictationLocalLlmModel : undefined,
     dictationLocalLlmRunner: isDictation ? settings.dictationLocalLlmRunner : undefined,
+    meetingSourceMode: isMeeting ? settings.meetingSourceMode : undefined,
+    meetingSpeakerLabelsEnabled: isMeeting ? settings.meetingSpeakerLabelsEnabled : undefined,
+    meetingNotesPrompt: isMeeting ? settings.meetingNotesPrompt : undefined,
+    meetingSaveTranscript: isMeeting ? settings.meetingSaveTranscript : undefined,
+    meetingTranscriptDirectory: isMeeting ? settings.meetingTranscriptDirectory : undefined,
   };
 }
 
@@ -536,7 +542,7 @@ function SettingsView({
   modelStatus: ModelStatus | null;
   onSave: (partial: Partial<AppSettings>) => Promise<void>;
 }) {
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation' | 'models'>('subtitle');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'subtitle' | 'dictation' | 'meeting' | 'models'>('subtitle');
   const [draft, setDraft] = useState(settings);
   const inputDevices = devices.filter((d) => d.kind === 'input' || d.kind === 'duplex');
   const loopbackDevices = devices.filter((d) => d.kind === 'duplex');
@@ -667,6 +673,12 @@ function SettingsView({
             語音輸入
           </button>
           <button
+            className={activeSettingsTab === 'meeting' ? 'settings-tab active' : 'settings-tab'}
+            onClick={() => setActiveSettingsTab('meeting')}
+          >
+            會議字幕
+          </button>
+          <button
             className={activeSettingsTab === 'models' ? 'settings-tab active' : 'settings-tab'}
             onClick={() => setActiveSettingsTab('models')}
           >
@@ -678,7 +690,13 @@ function SettingsView({
       <section className="settings-main">
         <header className="settings-main-header">
           <h2 className="settings-main-title">
-            {activeSettingsTab === 'subtitle' ? '雙語字幕' : activeSettingsTab === 'dictation' ? '語音輸入' : '模型'}
+            {activeSettingsTab === 'subtitle'
+              ? '雙語字幕'
+              : activeSettingsTab === 'dictation'
+                ? '語音輸入'
+                : activeSettingsTab === 'meeting'
+                  ? '會議字幕'
+                  : '模型'}
           </h2>
         </header>
 
@@ -1089,12 +1107,170 @@ function SettingsView({
         </div>
         )}
 
+        {activeSettingsTab === 'meeting' && (
+          <div className="dictation-workspace settings-content-grid">
+            <div className="dictation-flow-grid">
+              <article className="dictation-section dictation-section-primary">
+                <h3 className="dictation-section-title">來源</h3>
+                <div className="dictation-inline-grid">
+                  <label>
+                    麥克風
+                    <select
+                      value={draft.meetingMicDeviceId}
+                      onChange={(event) => setDraft({ ...draft, meetingMicDeviceId: event.target.value })}
+                    >
+                      {inputDevices.map((device) => (
+                        <option key={device.id} value={device.id}>
+                          {device.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    系統音訊
+                    <select
+                      value={draft.meetingSystemAudioDeviceId}
+                      onChange={(event) => setDraft({ ...draft, meetingSystemAudioDeviceId: event.target.value })}
+                    >
+                      <option value="">系統預設</option>
+                      {loopbackDevices.map((device) => (
+                        <option key={device.id} value={device.id}>
+                          {device.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="dictation-inline-grid">
+                  <label>
+                    收音模式
+                    <select
+                      value={draft.meetingSourceMode}
+                      onChange={(event) => setDraft({ ...draft, meetingSourceMode: event.target.value as AppSettings['meetingSourceMode'] })}
+                    >
+                      <option value="dual">雙來源</option>
+                      <option value="system-audio">只收系統音訊</option>
+                      <option value="microphone">只收麥克風</option>
+                    </select>
+                  </label>
+                  <label>
+                    目標語言
+                    <select
+                      value={draft.meetingTargetLang}
+                      onChange={(event) => setDraft({ ...draft, meetingTargetLang: event.target.value })}
+                    >
+                      <option value="zh-TW">繁體中文</option>
+                      <option value="en">English</option>
+                      <option value="ja">日本語</option>
+                      <option value="ko">한국어</option>
+                    </select>
+                  </label>
+                </div>
+              </article>
+
+              <article className="dictation-section">
+                <h3 className="dictation-section-title">會議記錄</h3>
+                <div className="settings-subgroup settings-subgroup-compact settings-toggle-stack">
+                  <label className="toggle-row settings-toggle-block">
+                    <input
+                      type="checkbox"
+                      checked={draft.meetingSpeakerLabelsEnabled}
+                      onChange={(event) => setDraft({ ...draft, meetingSpeakerLabelsEnabled: event.target.checked })}
+                    />
+                    <span>辨識發言者標籤</span>
+                  </label>
+                  <label className="toggle-row settings-toggle-block settings-toggle-compact">
+                    <input
+                      type="checkbox"
+                      checked={draft.meetingSaveTranscript}
+                      onChange={(event) => setDraft({ ...draft, meetingSaveTranscript: event.target.checked })}
+                    />
+                    <span>保存會議逐字稿</span>
+                  </label>
+                </div>
+                <label>
+                  預設會議記錄 Prompt
+                  <textarea
+                    rows={6}
+                    value={draft.meetingNotesPrompt}
+                    onChange={(event) => setDraft({ ...draft, meetingNotesPrompt: event.target.value })}
+                  />
+                </label>
+                {draft.meetingSaveTranscript && (
+                  <div className="settings-subgroup settings-subgroup-compact save-settings-stack">
+                    <label className="toggle-row">
+                      <span>逐字稿儲存位置</span>
+                    </label>
+                    <div className="save-path-row">
+                      <span className="save-path-text">{draft.meetingTranscriptDirectory || '未設定'}</span>
+                      <button
+                        className="secondary"
+                        onClick={async () => {
+                          const dir = await window.app.chooseSaveDirectory();
+                          if (dir) {
+                            setDraft({ ...draft, meetingTranscriptDirectory: dir });
+                          }
+                        }}
+                      >
+                        選擇
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            </div>
+
+            <div className="dictation-detail-stack">
+              <article className="dictation-section">
+                <h3 className="dictation-section-title">進階</h3>
+                <div className="dictation-inline-grid">
+                  <label>
+                    串流辨識引擎
+                    <select
+                      value={draft.meetingSttModel}
+                      onChange={(event) => setDraft({ ...draft, meetingSttModel: event.target.value })}
+                    >
+                      <option value="moonshine">Moonshine</option>
+                      <option value="sensevoice">SenseVoice</option>
+                      <option value="apple-stt">SFSpeechRecognizer</option>
+                    </select>
+                  </label>
+                  <label>
+                    翻譯引擎
+                    <select
+                      value={draft.meetingTranslateModel}
+                      onChange={(event) => setDraft({ ...draft, meetingTranslateModel: event.target.value })}
+                    >
+                      <option value="google">Google Translate</option>
+                      <option value="disabled">關閉翻譯</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  來源語言
+                  <select
+                    value={draft.meetingSourceLang}
+                    onChange={(event) => setDraft({ ...draft, meetingSourceLang: event.target.value })}
+                  >
+                    <option value="auto">自動偵測</option>
+                    <option value="en">English</option>
+                    <option value="zh-TW">繁體中文</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                  </select>
+                </label>
+                <p className="model-hint">Milestone 0 先建立模式邊界與設定契約。會議字幕的雙來源 capture 與 notes generation 會在後續 milestone 實作。</p>
+              </article>
+            </div>
+          </div>
+        )}
+
         {activeSettingsTab === 'models' && (
           <div className="models-workspace">
             <article className="dictation-section dictation-section-primary">
               <h3 className="dictation-section-title">模型庫</h3>
               <p className="model-hint">
-                模型下載是整個 app 共用的資源。雙語字幕與語音輸入都會使用這裡的模型狀態。
+                模型下載是整個 app 共用的資源。雙語字幕、語音輸入與會議字幕都會使用這裡的模型狀態。
               </p>
               {isDownloading && downloadProgress && (
                 <div className="model-download-banner" role="status" aria-live="polite">
@@ -1120,7 +1296,7 @@ function SettingsView({
                     <div className="model-card-meta">
                       <span>大小 {sizeLabel}</span>
                       {key === 'sensevoice' && <span>推薦用於繁體中文與混語</span>}
-                      {key === 'vad' && <span>字幕與語音輸入都需要</span>}
+                      {key === 'vad' && <span>字幕、語音輸入與會議字幕都需要</span>}
                     </div>
                     <div className="model-card-actions">
                       {!ready ? (
@@ -1178,6 +1354,19 @@ function SettingsView({
               onClick={() => window.app.downloadModels()}
             >
               {isDownloading ? '下載中' : '下載所有模型'}
+            </button>
+          </>
+        ) : activeSettingsTab === 'meeting' ? (
+          <>
+            <button
+              onClick={async () => {
+                const nextSettings = {
+                  ...draft,
+                };
+                await onSave(nextSettings);
+              }}
+            >
+              儲存會議字幕設定
             </button>
           </>
         ) : (
@@ -1241,8 +1430,14 @@ export function App() {
       if (!loadedSettings.dictationDeviceId || !inputDeviceIds.has(loadedSettings.dictationDeviceId)) {
         loadedSettings = { ...loadedSettings, dictationDeviceId: preferred?.id ?? '' };
       }
+      if (!loadedSettings.meetingMicDeviceId || !inputDeviceIds.has(loadedSettings.meetingMicDeviceId)) {
+        loadedSettings = { ...loadedSettings, meetingMicDeviceId: preferred?.id ?? '' };
+      }
       if (loadedSettings.outputDeviceId && !outputDeviceIds.has(loadedSettings.outputDeviceId)) {
         loadedSettings = { ...loadedSettings, outputDeviceId: '' };
+      }
+      if (loadedSettings.meetingSystemAudioDeviceId && !outputDeviceIds.has(loadedSettings.meetingSystemAudioDeviceId)) {
+        loadedSettings = { ...loadedSettings, meetingSystemAudioDeviceId: '' };
       }
       setSettings(loadedSettings);
     }).catch((error: unknown) => {
