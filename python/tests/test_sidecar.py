@@ -53,6 +53,7 @@ from sidecar import (
     normalize_text,
     normalize_moonshine_lang,
     parse_dictation_dictionary,
+    should_attempt_dictation_batch_fallback,
 )
 
 
@@ -90,6 +91,15 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertEqual(normalize_mlx_whisper_lang("zh-TW"), "zh")
         self.assertEqual(normalize_mlx_whisper_lang("en"), "en")
         self.assertIsNone(normalize_mlx_whisper_lang("auto"))
+
+    def test_dictation_batch_fallback_uses_buffer_length_for_mlx_whisper(self) -> None:
+        self.assertTrue(should_attempt_dictation_batch_fallback("whisper-mlx", [], 0.01, 16000))
+        self.assertFalse(should_attempt_dictation_batch_fallback("whisper-mlx", [], 0.5, 1000))
+
+    def test_dictation_batch_fallback_uses_input_level_for_streaming_models(self) -> None:
+        self.assertTrue(should_attempt_dictation_batch_fallback("sensevoice", [], 0.08, 1000))
+        self.assertFalse(should_attempt_dictation_batch_fallback("sensevoice", [], 0.05, 16000))
+        self.assertFalse(should_attempt_dictation_batch_fallback("sensevoice", ["hello"], 0.5, 16000))
 
     def test_dictation_state_event_includes_state(self) -> None:
         event = build_dictation_state_event("recording", "Dictation session started")

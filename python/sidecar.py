@@ -125,6 +125,19 @@ def normalize_mlx_whisper_lang(source_lang: str) -> str | None:
     return normalized
 
 
+def should_attempt_dictation_batch_fallback(
+    stt_model: str,
+    dictation_parts: list[str],
+    max_input_level: float,
+    buffered_sample_count: int,
+) -> bool:
+    if dictation_parts or buffered_sample_count <= 0:
+        return False
+    if stt_model == "whisper-mlx":
+        return buffered_sample_count >= MIN_SPEECH_SAMPLES
+    return max_input_level >= 0.08
+
+
 def build_dictation_state_event(state: str, detail: str | None = None) -> dict[str, Any]:
     event: dict[str, Any] = {
         "type": "dictation_state",
@@ -2124,12 +2137,20 @@ class SidecarApp:
                     )
                 except Exception as error:
                     trace_debug(f"dictation flush failed session={self.config.session_id} error={error}")
-            if not self.dictation_parts and self.dictation_max_input_level >= 0.08:
+            buffered_audio = None
+            if self.dictation_audio_buffer:
+                buffered_audio = np.concatenate(self.dictation_audio_buffer).astype(np.float32)
+            should_attempt_batch = should_attempt_dictation_batch_fallback(
+                self.config.stt_model,
+                self.dictation_parts,
+                self.dictation_max_input_level,
+                0 if buffered_audio is None else buffered_audio.size,
+            )
+            if should_attempt_batch:
                 transcribe_buffer = getattr(self.transcriber, "transcribe_buffer", None)
-                if callable(transcribe_buffer) and self.dictation_audio_buffer:
+                if callable(transcribe_buffer) and buffered_audio is not None:
                     batch_base_ms = self.dictation_started_at_ms or now_ms()
                     try:
-                        buffered_audio = np.concatenate(self.dictation_audio_buffer).astype(np.float32)
                         fallback_chunks = transcribe_buffer(buffered_audio, batch_base_ms)
                         for chunk in fallback_chunks:
                             self._emit_final_chunk(chunk)
