@@ -43,6 +43,14 @@ for root, dirs, files in os.walk(pkg_dir):
 
 cd "$PYTHON_DIR"
 
+MLX_WHISPER_DIR="$PROJECT_ROOT/.venv/lib/python3.12/site-packages/mlx_whisper"
+MLX_WHISPER_FLAG=""
+if [ -d "$MLX_WHISPER_DIR" ]; then
+  MLX_WHISPER_FLAG="--add-data=$MLX_WHISPER_DIR:mlx_whisper"
+else
+  echo "[build-sidecar] WARNING: mlx_whisper package directory not found, MLX Whisper won't work in packaged build"
+fi
+
 # Ensure apple-stt binary exists
 APPLE_STT="$PYTHON_DIR/apple-stt"
 APPLE_STT_FLAG=""
@@ -87,8 +95,10 @@ fi
   --hidden-import deep_translator \
   --hidden-import opencc \
   --hidden-import _sounddevice_data \
+  --hidden-import mlx_whisper \
   --collect-all sherpa_onnx \
   --collect-all _sounddevice_data \
+  $MLX_WHISPER_FLAG \
   $SHERPA_COLLECT \
   $SHERPA_NATIVE \
   $APPLE_STT_FLAG \
