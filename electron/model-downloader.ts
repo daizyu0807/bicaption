@@ -1,3 +1,4 @@
+import { app } from 'electron';
 import { createWriteStream, existsSync, lstatSync, mkdirSync, renameSync, rmSync, symlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -57,7 +58,8 @@ export class ModelDownloader extends EventEmitter {
 
   checkStatus(): ModelStatus {
     const sensevoice = existsSync(join(this.pythonDir, SENSEVOICE_MODEL_DIR, 'model.int8.onnx'));
-    const mlxWhisper = this.checkPythonPackage('mlx-whisper') && this.checkMlxWhisperModelReady(DEFAULT_MLX_WHISPER_MODEL);
+    const mlxWhisperRuntimeReady = app.isPackaged ? true : this.checkPythonPackage('mlx-whisper');
+    const mlxWhisper = mlxWhisperRuntimeReady && this.checkMlxWhisperModelReady(DEFAULT_MLX_WHISPER_MODEL);
     const whisperTinyEn = existsSync(join(this.pythonDir, WHISPER_TINY_EN_MODEL_DIR, 'tiny.en-encoder.int8.onnx'));
     const whisperSmall = existsSync(join(this.pythonDir, WHISPER_SMALL_MODEL_DIR, 'small-encoder.int8.onnx'));
     const zipformerKo = existsSync(join(this.pythonDir, ZIPFORMER_KOREAN_MODEL_DIR, 'encoder-epoch-99-avg-1.int8.onnx'));
@@ -261,6 +263,10 @@ export class ModelDownloader extends EventEmitter {
   }
 
   private installPythonPackage(packageName: string, stage: 'mlx-whisper'): Promise<void> {
+    if (app.isPackaged) {
+      this.emitProgress({ stage, percent: 100, downloadedMB: 0, totalMB: 0 });
+      return Promise.resolve();
+    }
     return new Promise((resolve, reject) => {
       const command = this.getPythonCommand();
       this.emitProgress({ stage, percent: 5, downloadedMB: 0, totalMB: 0 });
