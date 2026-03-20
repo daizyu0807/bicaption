@@ -78,9 +78,9 @@ function createTrayTemplateImage() {
   const svg = `
     <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
       <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 5.25h12" stroke-width="1.8"/>
-        <path d="M3 12.75h12" stroke-width="1.8"/>
-        <path d="M5.25 9c1.1-1.2 2.2-1.2 3.3 0s2.2 1.2 3.3 0 2.2-1.2 3.3 0" stroke-width="1.8"/>
+        <path d="M3.25 4.75h11.5" stroke-width="1.7"/>
+        <path d="M3.25 13.25h11.5" stroke-width="1.7"/>
+        <path d="M4.9 9c1.02-.98 2.03-.98 3.05 0 1.01.98 2.03.98 3.04 0 1.02-.98 2.03-.98 3.05 0" stroke-width="1.7"/>
       </g>
     </svg>
   `.trim();
@@ -103,13 +103,17 @@ function createNamedTrayImage() {
 }
 
 function createTrayImage() {
+  const inlineImage = createTrayTemplateImage();
+  if (!inlineImage.isEmpty()) {
+    traceMain(`createTrayImage source=inline ${describeNativeImage(inlineImage)}`);
+    return inlineImage;
+  }
   const systemImage = createNamedTrayImage();
   if (!systemImage.isEmpty()) {
     traceMain(`createTrayImage source=named ${describeNativeImage(systemImage)}`);
     return systemImage;
   }
-  const inlineImage = createTrayTemplateImage();
-  traceMain(`createTrayImage source=inline ${describeNativeImage(inlineImage)}`);
+  traceMain(`createTrayImage source=fallback-inline ${describeNativeImage(inlineImage)}`);
   return inlineImage;
 }
 
