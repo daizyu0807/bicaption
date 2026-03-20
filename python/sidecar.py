@@ -2087,6 +2087,9 @@ class AppleSttTranscriber:
                 except subprocess.TimeoutExpired:
                     proc.kill()
 
+    def flush(self, base_time_ms: int) -> list[TranscriptChunk]:
+        return self.feed_audio(np.zeros(0, dtype=np.float32), base_time_ms)
+
     def _read_stdout(self) -> None:
         assert self._proc is not None and self._proc.stdout is not None
         for raw_line in self._proc.stdout:
@@ -2415,12 +2418,12 @@ class SidecarApp:
                 except Exception as error:
                     trace_debug(f"stream flush failed session={self.config.session_id} error={error}")
         if self.config is not None and self.config.mode == "dictation" and self.transcriber is not None:
+            if isinstance(self.transcriber, AppleSttTranscriber):
+                self.transcriber.stop()
             flush = getattr(self.transcriber, "flush", None)
             if callable(flush):
                 flush_base_ms = self.dictation_last_update_ms or self.dictation_started_at_ms or now_ms()
                 try:
-                    if isinstance(self.transcriber, AppleSttTranscriber):
-                        self.transcriber.stop()
                     flushed_chunks = flush(flush_base_ms)
                     for chunk in flushed_chunks:
                         self._emit_final_chunk(chunk)
