@@ -278,6 +278,7 @@ button:disabled {
   flex: 1;
   min-height: 0;
   align-content: start;
+  max-width: 980px;
 }
 
 .subtitle-grid {
@@ -378,6 +379,15 @@ button:disabled {
   gap: 0;
 }
 
+.settings-subgroup {
+  display: grid;
+  gap: var(--settings-space-2);
+  padding: var(--settings-space-3);
+  border-radius: var(--settings-radius-md);
+  background: var(--settings-color-muted-surface);
+  border: 1px solid var(--settings-color-border);
+}
+
 .settings-toggle-stack {
   display: grid;
   gap: var(--settings-space-1);
@@ -388,12 +398,7 @@ button:disabled {
 }
 
 .dictation-permission-card {
-  display: grid;
   gap: var(--settings-space-2);
-  padding: var(--settings-space-3);
-  border-radius: var(--settings-radius-md);
-  background: var(--settings-color-muted-surface);
-  border: 1px solid var(--settings-color-border);
 }
 
 .dictation-permission-row {
@@ -462,6 +467,10 @@ button:disabled {
 .save-settings-stack {
   display: grid;
   gap: 6px;
+}
+
+.save-settings-stack .toggle-row {
+  min-height: 24px;
 }
 
 .save-path-text {

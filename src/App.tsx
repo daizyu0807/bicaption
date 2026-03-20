@@ -702,48 +702,50 @@ function SettingsView({
                   </select>
                 </label>
               </div>
-              <label>
-                快捷鍵組合鍵
-                <div className="modifier-grid">
-                  <label className="toggle-row">
-                    <input
-                      type="checkbox"
-                      checked={draft.dictationHotkey.modifiers.includes('cmd')}
-                      disabled={modifierOnlyHotkey}
-                      onChange={(event) => toggleHotkeyModifier('cmd', event.target.checked)}
-                    />
-                    Cmd
-                  </label>
-                  <label className="toggle-row">
-                    <input
-                      type="checkbox"
-                      checked={draft.dictationHotkey.modifiers.includes('shift')}
-                      disabled={modifierOnlyHotkey}
-                      onChange={(event) => toggleHotkeyModifier('shift', event.target.checked)}
-                    />
-                    Shift
-                  </label>
-                  <label className="toggle-row">
-                    <input
-                      type="checkbox"
-                      checked={draft.dictationHotkey.modifiers.includes('ctrl')}
-                      disabled={modifierOnlyHotkey}
-                      onChange={(event) => toggleHotkeyModifier('ctrl', event.target.checked)}
-                    />
-                    Ctrl
-                  </label>
-                  <label className="toggle-row">
-                    <input
-                      type="checkbox"
-                      checked={draft.dictationHotkey.modifiers.includes('alt')}
-                      disabled={modifierOnlyHotkey}
-                      onChange={(event) => toggleHotkeyModifier('alt', event.target.checked)}
-                    />
-                    Option
-                  </label>
-                </div>
-              </label>
-              <div className="dictation-permission-card">
+              <div className="settings-subgroup">
+                <label>
+                  快捷鍵組合鍵
+                  <div className="modifier-grid">
+                    <label className="toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={draft.dictationHotkey.modifiers.includes('cmd')}
+                        disabled={modifierOnlyHotkey}
+                        onChange={(event) => toggleHotkeyModifier('cmd', event.target.checked)}
+                      />
+                      Cmd
+                    </label>
+                    <label className="toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={draft.dictationHotkey.modifiers.includes('shift')}
+                        disabled={modifierOnlyHotkey}
+                        onChange={(event) => toggleHotkeyModifier('shift', event.target.checked)}
+                      />
+                      Shift
+                    </label>
+                    <label className="toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={draft.dictationHotkey.modifiers.includes('ctrl')}
+                        disabled={modifierOnlyHotkey}
+                        onChange={(event) => toggleHotkeyModifier('ctrl', event.target.checked)}
+                      />
+                      Ctrl
+                    </label>
+                    <label className="toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={draft.dictationHotkey.modifiers.includes('alt')}
+                        disabled={modifierOnlyHotkey}
+                        onChange={(event) => toggleHotkeyModifier('alt', event.target.checked)}
+                      />
+                      Option
+                    </label>
+                  </div>
+                </label>
+              </div>
+              <div className="settings-subgroup dictation-permission-card">
                 <div className="dictation-permission-row">
                   <span className="dictation-permission-copy">Accessibility</span>
                   <strong className={accessibilityPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
@@ -825,7 +827,7 @@ function SettingsView({
                   <option value="polished">潤飾後</option>
                 </select>
               </label>
-              <div className="settings-toggle-stack">
+              <div className="settings-subgroup settings-toggle-stack">
                 <label className="toggle-row settings-toggle-block">
                   <input
                     type="checkbox"
@@ -952,7 +954,7 @@ function SettingsView({
                   </select>
                 </label>
               </div>
-              <div className="settings-toggle-stack">
+              <div className="settings-subgroup settings-toggle-stack">
                 <label className="toggle-row settings-toggle-block">
                   <input
                     type="checkbox"
@@ -1019,7 +1021,7 @@ function SettingsView({
                   <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
                 </>
               )}
-              <div className="save-settings-stack">
+              <div className="settings-subgroup save-settings-stack">
                 <label className="toggle-row">
                   <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
                   保存字幕記錄
