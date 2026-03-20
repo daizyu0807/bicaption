@@ -1,6 +1,6 @@
 {
   "name": "bicaption",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Realtime bilingual caption overlay for macOS — local STT with SenseVoice + Google Translate",
   "license": "MIT",
   "author": "davedai",
