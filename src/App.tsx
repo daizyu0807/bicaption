@@ -392,36 +392,6 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
   };
 }
 
-function getSessionSummary(viewState: ReturnType<typeof useCaptionState>, settings: AppSettings) {
-  if (viewState.sessionState === 'streaming') {
-    const translation = isTranslationEnabled(settings) ? '雙語' : '單語';
-    const modelNames: Record<string, string> = { sensevoice: 'SenseVoice', 'apple-stt': 'SFSpeechRecognizer' };
-    const model = modelNames[settings.sttModel] ?? settings.sttModel;
-    if (!settings.outputDeviceId) {
-      return `${model}・${translation}・系統預設`;
-    }
-    const audio = getInputHealthLabel(viewState);
-    return `${model}・${translation}・${audio}`;
-  }
-  if (viewState.sessionState === 'error') {
-    return viewState.lastError ?? '發生錯誤，請檢查輸入裝置。';
-  }
-  if (viewState.sessionState === 'connecting') {
-    return '連線中…';
-  }
-  return '選擇輸入裝置後按開始';
-}
-
-function getInputHealthLabel(viewState: ReturnType<typeof useCaptionState>) {
-  if (viewState.metrics.inputLevel > 0.12) {
-    return '音訊正常';
-  }
-  if (viewState.metrics.inputLevel > 0.02) {
-    return '音訊微弱';
-  }
-  return '無音訊';
-}
-
 function getDownloadLabel(progress: ModelDownloadProgress | null): string {
   if (!progress) return '下載模型';
   if (progress.stage === 'extracting') return '解壓縮中…';
@@ -637,11 +607,6 @@ function SettingsView({
   return (
     <main className="settings-shell">
       <aside className="settings-sidebar">
-        <div className="settings-sidebar-head">
-          <p className="settings-sidebar-eyebrow">BiCaption</p>
-          <h1 className="settings-sidebar-title">Settings</h1>
-          <p className="settings-sidebar-summary">{getSessionSummary(viewState, draft)}</p>
-        </div>
         <div className="settings-tabbar settings-tabbar-sidebar">
           <button
             className={activeSettingsTab === 'subtitle' ? 'settings-tab active' : 'settings-tab'}
@@ -660,10 +625,7 @@ function SettingsView({
 
       <section className="settings-main">
         <header className="settings-main-header">
-          <div>
-            <p className="settings-main-eyebrow">Preferences</p>
-            <h2 className="settings-main-title">{activeSettingsTab === 'subtitle' ? '雙語字幕' : '語音輸入'}</h2>
-          </div>
+          <h2 className="settings-main-title">{activeSettingsTab === 'subtitle' ? '雙語字幕' : '語音輸入'}</h2>
         </header>
 
         <div className={`settings-scroll settings-grid settings-grid-${activeSettingsTab}`}>
@@ -702,9 +664,7 @@ function SettingsView({
         <div className="dictation-workspace settings-content-grid">
           <div className="dictation-flow-grid">
             <article className="dictation-section dictation-section-primary">
-              <div className="dictation-section-header">
-                <h3 className="dictation-section-title">啟動</h3>
-              </div>
+              <h3 className="dictation-section-title">啟動</h3>
               <div className="dictation-inline-grid">
                 <label>
                   輸入裝置
@@ -824,9 +784,7 @@ function SettingsView({
             </article>
 
             <article className="dictation-section">
-              <div className="dictation-section-header">
-                <h3 className="dictation-section-title">輸出</h3>
-              </div>
+              <h3 className="dictation-section-title">輸出</h3>
               <div className="dictation-inline-grid">
                 <label>
                   語音語言
@@ -879,7 +837,6 @@ function SettingsView({
                 />
                 <span>
                   啟用本地 LLM 潤稿
-                  <small>會先套字典與規則，再交給本地模型做保守書面化。</small>
                 </span>
               </label>
               <label className="toggle-row settings-toggle-block settings-toggle-compact">
@@ -900,16 +857,14 @@ function SettingsView({
                 />
               </label>
               {draft.dictationOutputAction !== 'copy' && (
-                <p className="model-hint">自動貼上需要 Accessibility 權限。若貼上失敗，文字仍會保留在剪貼簿。</p>
+                <p className="model-hint">自動貼上需要 Accessibility 權限。</p>
               )}
             </article>
           </div>
 
           <div className="dictation-detail-stack">
             <article className="dictation-section">
-              <div className="dictation-section-header">
-                <h3 className="dictation-section-title">進階</h3>
-              </div>
+              <h3 className="dictation-section-title">進階</h3>
               <div className="dictation-inline-grid">
                 <label>
                   語音辨識引擎
@@ -934,7 +889,7 @@ function SettingsView({
                 </label>
               </div>
               {draft.dictationSttModel === 'apple-stt' && (
-                <p className="model-hint">SFSpeechRecognizer 不會做多語自動判斷。若你要中英混講或自動偵測，改用 SenseVoice。</p>
+                <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
               )}
             </article>
           </div>
@@ -945,9 +900,7 @@ function SettingsView({
         <div className="subtitle-workspace settings-content-grid">
           <div className="dictation-flow-grid">
             <article className="dictation-section dictation-section-primary">
-              <div className="dictation-section-header">
-                <h3 className="dictation-section-title">來源</h3>
-              </div>
+              <h3 className="dictation-section-title">來源</h3>
               <label>
                 輸入裝置（麥克風）
                 <select
@@ -1009,15 +962,12 @@ function SettingsView({
                 />
                 <span>
                   啟用雙語字幕
-                  <small>關閉後只顯示原文字幕，可降低視覺密度與翻譯成本。</small>
                 </span>
               </label>
             </article>
 
             <article className="dictation-section">
-              <div className="dictation-section-header">
-                <h3 className="dictation-section-title">顯示</h3>
-              </div>
+              <h3 className="dictation-section-title">顯示</h3>
               <label className="toggle-row settings-toggle-block">
                 <input
                   type="checkbox"
@@ -1035,7 +985,6 @@ function SettingsView({
                 />
                 <span>
                   顯示字幕
-                  <small>字幕視窗被關閉後，可從這裡再次叫回來。</small>
                 </span>
               </label>
               <div className="dictation-inline-grid">
@@ -1053,9 +1002,7 @@ function SettingsView({
 
           <div className="dictation-detail-stack">
             <article className="dictation-section">
-              <div className="dictation-section-header">
-                <h3 className="dictation-section-title">進階</h3>
-              </div>
+              <h3 className="dictation-section-title">進階</h3>
               <label>
                 語音辨識引擎
                 <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
@@ -1069,7 +1016,7 @@ function SettingsView({
                     翻譯觸發延遲（{draft.partialStableMs}ms）
                     <input type="range" min="200" max="2000" step="100" value={draft.partialStableMs} onChange={(event) => setDraft({ ...draft, partialStableMs: Number(event.target.value) })} />
                   </label>
-                  <p className="model-hint">SFSpeechRecognizer 會依照目前的來源語言辨識，不會做多語自動判斷。若你常中英混講，改用 SenseVoice。</p>
+                  <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
                 </>
               )}
               <label className="toggle-row">
