@@ -1069,10 +1069,14 @@ function SettingsView({
               <label>
                 語音辨識引擎
                 <select value={draft.sttModel} onChange={(event) => setDraft({ ...draft, sttModel: event.target.value })}>
+                  <option value="moonshine">Moonshine（實驗性）</option>
                   <option value="apple-stt">SFSpeechRecognizer</option>
                   <option value="sensevoice">SenseVoice</option>
                 </select>
               </label>
+              {draft.sttModel === 'moonshine' && (
+                <p className="model-hint">Milestone 1 先建立 Moonshine provider 掛點；目前若本機未接入 Moonshine runtime，會回退到 SenseVoice。</p>
+              )}
               {draft.sttModel === 'apple-stt' && (
                 <>
                   <label>

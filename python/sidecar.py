@@ -366,6 +366,11 @@ class SessionConfig:
     dictation_max_rewrite_expansion_ratio: float = 1.3
     dictation_local_llm_model: str = ""
     dictation_local_llm_runner: str = ""
+    meeting_source_mode: str = "dual"
+    meeting_speaker_labels_enabled: bool = True
+    meeting_notes_prompt: str = ""
+    meeting_save_transcript: bool = True
+    meeting_transcript_directory: str = ""
 
 
 @dataclass
@@ -710,6 +715,32 @@ def get_dictation_rewrite_provider(rewrite_mode: str) -> DictationRewriteProvide
     return None
 
 
+def get_streaming_transcriber(config: SessionConfig):
+    if config.stt_model == "moonshine":
+        emit({"type": "session_state", "state": "connecting", "detail": "Preparing Moonshine streaming provider..."})
+        return MoonshineTranscriber(source_lang=config.source_lang)
+    if config.stt_model == "apple-stt":
+        emit({"type": "session_state", "state": "connecting", "detail": "Starting Apple Speech Recognition..."})
+        transcriber = AppleSttTranscriber(
+            source_lang=config.source_lang,
+            partial_stable_ms=config.partial_stable_ms,
+        )
+        transcriber.start()
+        return transcriber
+    if config.stt_model == "whisper-tiny-en":
+        emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper tiny.en model..."})
+        return WhisperTinyEnTranscriber()
+    if config.stt_model == "whisper-small":
+        lang = config.source_lang if config.source_lang != "auto" else ""
+        emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper small model..."})
+        return WhisperSmallTranscriber(language=lang)
+    if config.stt_model == "zipformer-ko":
+        emit({"type": "session_state", "state": "connecting", "detail": "Loading Zipformer Korean model..."})
+        return ZipformerKoreanTranscriber()
+    emit({"type": "session_state", "state": "connecting", "detail": "Loading SenseVoice model..."})
+    return SenseVoiceTranscriber()
+
+
 @dataclass
 class TranscriptChunk:
     mode: str
@@ -920,6 +951,43 @@ class SenseVoiceTranscriber:
             confidence=0.0,
             detected_lang=lang,
         )]
+
+
+class MoonshineTranscriber:
+    """Experimental Moonshine hook.
+
+    Current Milestone 1 behavior keeps the provider contract explicit while
+    falling back to SenseVoice until a dedicated Moonshine runtime is wired in.
+    """
+
+    def __init__(self, source_lang: str = "auto") -> None:
+        self._fallback = SenseVoiceTranscriber()
+        self.finalized_ids = self._fallback.finalized_ids
+        self._warned = False
+        self._source_lang = source_lang
+
+    def _maybe_warn(self) -> None:
+        if self._warned:
+            return
+        self._warned = True
+        emit({
+            "type": "error",
+            "code": "moonshine_fallback",
+            "message": "Moonshine provider is not wired yet; falling back to SenseVoice for this session.",
+            "recoverable": True,
+        })
+
+    def feed_audio(self, samples: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        self._maybe_warn()
+        return self._fallback.feed_audio(samples, base_time_ms)
+
+    def flush(self, base_time_ms: int) -> list[TranscriptChunk]:
+        self._maybe_warn()
+        return self._fallback.flush(base_time_ms)
+
+    def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        self._maybe_warn()
+        return self._fallback.transcribe_buffer(audio, base_time_ms)
 
 
 class WhisperTinyEnTranscriber:
@@ -1691,7 +1759,7 @@ class SidecarApp:
         self.stop_event = threading.Event()
         self.config: SessionConfig | None = None
         self.capture: AudioCapture | None = None
-        self.transcriber: SenseVoiceTranscriber | WhisperTinyEnTranscriber | WhisperSmallTranscriber | ZipformerKoreanTranscriber | AppleSttTranscriber | None = None
+        self.transcriber: SenseVoiceTranscriber | MoonshineTranscriber | WhisperTinyEnTranscriber | WhisperSmallTranscriber | ZipformerKoreanTranscriber | AppleSttTranscriber | None = None
         self.translator: TranslationProvider | None = None
         self.opencc_s2t = OpenCC("s2t")
         self.dictation_parts: list[str] = []
@@ -1753,6 +1821,11 @@ class SidecarApp:
             dictation_max_rewrite_expansion_ratio=float(payload.get("dictationMaxRewriteExpansionRatio", 1.3)),
             dictation_local_llm_model=str(payload.get("dictationLocalLlmModel", "")),
             dictation_local_llm_runner=str(payload.get("dictationLocalLlmRunner", "")),
+            meeting_source_mode=str(payload.get("meetingSourceMode", "dual")),
+            meeting_speaker_labels_enabled=bool(payload.get("meetingSpeakerLabelsEnabled", True)),
+            meeting_notes_prompt=str(payload.get("meetingNotesPrompt", "")),
+            meeting_save_transcript=bool(payload.get("meetingSaveTranscript", True)),
+            meeting_transcript_directory=str(payload.get("meetingTranscriptDirectory", "")),
         )
         set_emit_context(self.config.mode, self.config.session_id)
         if self.config.mode == "dictation":
@@ -1770,27 +1843,7 @@ class SidecarApp:
         try:
             self.capture = AudioCapture(self.config.device_id, self.config.chunk_ms, self.config.output_device_id)
             self.capture.start()
-            if self.config.stt_model == "apple-stt":
-                emit({"type": "session_state", "state": "connecting", "detail": "Starting Apple Speech Recognition..."})
-                transcriber = AppleSttTranscriber(
-                    source_lang=self.config.source_lang,
-                    partial_stable_ms=self.config.partial_stable_ms,
-                )
-                transcriber.start()
-                self.transcriber = transcriber
-            elif self.config.stt_model == "whisper-tiny-en":
-                emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper tiny.en model..."})
-                self.transcriber = WhisperTinyEnTranscriber()
-            elif self.config.stt_model == "whisper-small":
-                lang = self.config.source_lang if self.config.source_lang != "auto" else ""
-                emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper small model..."})
-                self.transcriber = WhisperSmallTranscriber(language=lang)
-            elif self.config.stt_model == "zipformer-ko":
-                emit({"type": "session_state", "state": "connecting", "detail": "Loading Zipformer Korean model..."})
-                self.transcriber = ZipformerKoreanTranscriber()
-            else:
-                emit({"type": "session_state", "state": "connecting", "detail": "Loading SenseVoice model..."})
-                self.transcriber = SenseVoiceTranscriber()
+            self.transcriber = get_streaming_transcriber(self.config)
             if self.config.translate_model in {"disabled", "off", "none"}:
                 self.translator = None
             else:
