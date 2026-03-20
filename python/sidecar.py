@@ -732,9 +732,10 @@ def get_dictation_rewrite_provider(rewrite_mode: str) -> DictationRewriteProvide
     return None
 
 
-def get_streaming_transcriber(config: SessionConfig):
+def get_streaming_transcriber(config: SessionConfig, announce: bool = True):
     if config.stt_model == "moonshine":
-        emit({"type": "session_state", "state": "connecting", "detail": "Preparing Moonshine streaming provider..."})
+        if announce:
+            emit({"type": "session_state", "state": "connecting", "detail": "Preparing Moonshine streaming provider..."})
         try:
             return MoonshineTranscriber(source_lang=config.source_lang, update_interval_ms=config.partial_stable_ms)
         except Exception as error:
@@ -744,10 +745,12 @@ def get_streaming_transcriber(config: SessionConfig):
                 "message": f"Moonshine unavailable for this session, falling back to SenseVoice: {error}",
                 "recoverable": True,
             })
-            emit({"type": "session_state", "state": "connecting", "detail": "Falling back to SenseVoice..."})
+            if announce:
+                emit({"type": "session_state", "state": "connecting", "detail": "Falling back to SenseVoice..."})
             return SenseVoiceTranscriber()
     if config.stt_model == "apple-stt":
-        emit({"type": "session_state", "state": "connecting", "detail": "Starting Apple Speech Recognition..."})
+        if announce:
+            emit({"type": "session_state", "state": "connecting", "detail": "Starting Apple Speech Recognition..."})
         transcriber = AppleSttTranscriber(
             source_lang=config.source_lang,
             partial_stable_ms=config.partial_stable_ms,
@@ -755,16 +758,20 @@ def get_streaming_transcriber(config: SessionConfig):
         transcriber.start()
         return transcriber
     if config.stt_model == "whisper-tiny-en":
-        emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper tiny.en model..."})
+        if announce:
+            emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper tiny.en model..."})
         return WhisperTinyEnTranscriber()
     if config.stt_model == "whisper-small":
         lang = config.source_lang if config.source_lang != "auto" else ""
-        emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper small model..."})
+        if announce:
+            emit({"type": "session_state", "state": "connecting", "detail": "Loading Whisper small model..."})
         return WhisperSmallTranscriber(language=lang)
     if config.stt_model == "zipformer-ko":
-        emit({"type": "session_state", "state": "connecting", "detail": "Loading Zipformer Korean model..."})
+        if announce:
+            emit({"type": "session_state", "state": "connecting", "detail": "Loading Zipformer Korean model..."})
         return ZipformerKoreanTranscriber()
-    emit({"type": "session_state", "state": "connecting", "detail": "Loading SenseVoice model..."})
+    if announce:
+        emit({"type": "session_state", "state": "connecting", "detail": "Loading SenseVoice model..."})
     return SenseVoiceTranscriber()
 
 
@@ -778,6 +785,14 @@ class TranscriptChunk:
     ended_at_ms: int
     confidence: float
     detected_lang: str = ""
+
+
+@dataclass
+class MeetingChunk:
+    chunk: TranscriptChunk
+    source: str
+    speaker_id: str
+    speaker_label: str
 
 
 class AudioCapture:
@@ -846,10 +861,10 @@ class AudioCapture:
         return np.concatenate(chunks).astype(np.float32)
 
     def drain(self) -> np.ndarray:
-        primary = self._drain_queue(self.queue)
+        primary = self.drain_primary()
         if self.output_device_index is None:
             return primary
-        secondary = self._drain_queue(self.output_queue)
+        secondary = self.drain_output()
         if primary.size == 0 and secondary.size == 0:
             return np.zeros(0, dtype=np.float32)
         if primary.size == 0:
@@ -862,6 +877,14 @@ class AudioCapture:
         if secondary.size < max_len:
             secondary = np.pad(secondary, (0, max_len - secondary.size))
         return np.clip(primary + secondary, -1.0, 1.0).astype(np.float32)
+
+    def drain_primary(self) -> np.ndarray:
+        return self._drain_queue(self.queue)
+
+    def drain_output(self) -> np.ndarray:
+        if self.output_device_index is None:
+            return np.zeros(0, dtype=np.float32)
+        return self._drain_queue(self.output_queue)
 
 
 MAX_SPEECH_SECONDS = 10.0  # Force segment split for multi-speaker scenarios
@@ -1875,7 +1898,10 @@ class SidecarApp:
         self.dictation_last_update_ms = 0
         self.dictation_max_input_level = 0.0
         self.dictation_audio_buffer: list[np.ndarray] = []
-        self.translation_queue: queue.Queue[tuple[TranscriptChunk, SessionConfig]] = queue.Queue()
+        self.translation_queue: queue.Queue[tuple[TranscriptChunk | MeetingChunk, SessionConfig]] = queue.Queue()
+        self.meeting_mic_transcriber: SenseVoiceTranscriber | MoonshineTranscriber | WhisperTinyEnTranscriber | WhisperSmallTranscriber | ZipformerKoreanTranscriber | AppleSttTranscriber | None = None
+        self.meeting_system_transcriber: SenseVoiceTranscriber | MoonshineTranscriber | WhisperTinyEnTranscriber | WhisperSmallTranscriber | ZipformerKoreanTranscriber | AppleSttTranscriber | None = None
+        self.meeting_samples_fed = {"microphone": 0, "system": 0}
         self.translation_worker = threading.Thread(target=self._translation_loop, daemon=True)
         self.translation_worker.start()
 
@@ -1944,6 +1970,8 @@ class SidecarApp:
             self.dictation_audio_buffer = []
             emit(build_dictation_state_event("recording", "Dictation session started"))
             trace_debug(f"dictation recording session={self.config.session_id}")
+        if self.config.mode == "meeting":
+            self.meeting_samples_fed = {"microphone": 0, "system": 0}
         self.stop_event.clear()
         self.active = True
         emit({"type": "session_state", "state": "connecting", "detail": f"Connecting to {self.config.device_id}"})
@@ -1951,7 +1979,14 @@ class SidecarApp:
         try:
             self.capture = AudioCapture(self.config.device_id, self.config.chunk_ms, self.config.output_device_id)
             self.capture.start()
-            self.transcriber = get_streaming_transcriber(self.config)
+            if self.config.mode == "meeting":
+                self.transcriber = None
+                if self.config.meeting_source_mode in {"microphone", "dual"}:
+                    self.meeting_mic_transcriber = get_streaming_transcriber(self.config, announce=False)
+                if self.config.meeting_source_mode in {"system-audio", "dual"}:
+                    self.meeting_system_transcriber = get_streaming_transcriber(self.config, announce=False)
+            else:
+                self.transcriber = get_streaming_transcriber(self.config)
             if self.config.translate_model in {"disabled", "off", "none"}:
                 self.translator = None
             else:
@@ -1965,6 +2000,8 @@ class SidecarApp:
             self.active = False
             self.capture = None
             self.transcriber = None
+            self.meeting_mic_transcriber = None
+            self.meeting_system_transcriber = None
             self.translator = None
             emit({"type": "session_state", "state": "error", "detail": str(error)})
             return
@@ -1979,7 +2016,9 @@ class SidecarApp:
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.5)
         self.thread = None
-        if self.config is not None and self.config.mode != "dictation" and self.transcriber is not None:
+        if self.config is not None and self.config.mode == "meeting":
+            self._flush_meeting_transcribers()
+        elif self.config is not None and self.config.mode != "dictation" and self.transcriber is not None:
             flush = getattr(self.transcriber, "flush", None)
             if callable(flush):
                 try:
@@ -2022,6 +2061,10 @@ class SidecarApp:
         if isinstance(self.transcriber, AppleSttTranscriber) or isinstance(self.transcriber, MoonshineTranscriber):
             self.transcriber.stop()
         self.transcriber = None
+        self._stop_transcriber(self.meeting_mic_transcriber)
+        self._stop_transcriber(self.meeting_system_transcriber)
+        self.meeting_mic_transcriber = None
+        self.meeting_system_transcriber = None
         if self.active:
             self.active = False
             emit({"type": "session_state", "state": "stopped"})
@@ -2064,6 +2107,69 @@ class SidecarApp:
     def _convert_s2t(self, text: str) -> str:
         return self.opencc_s2t.convert(text)
 
+    def _stop_transcriber(self, transcriber: Any) -> None:
+        if transcriber is None:
+            return
+        stop = getattr(transcriber, "stop", None)
+        if callable(stop):
+            try:
+                stop()
+            except Exception as error:
+                trace_debug(f"transcriber stop failed error={error}")
+
+    def _build_meeting_label(self, source: str) -> tuple[str, str]:
+        if source == "microphone":
+            return "microphone", "我方"
+        return "system", "遠端"
+
+    def _emit_meeting_chunk(self, meeting_chunk: MeetingChunk, translated_text: str = "") -> None:
+        source_text = meeting_chunk.chunk.source_text
+        if meeting_chunk.chunk.detected_lang.lower().startswith("zh") and self.config is not None:
+            target = self.config.target_lang.lower()
+            if "tw" in target or "hant" in target:
+                source_text = self._convert_s2t(source_text)
+            if translated_text:
+                translated_text = self._convert_s2t(translated_text)
+        emit({
+            "type": "meeting_caption",
+            "segmentId": meeting_chunk.chunk.segment_id,
+            "speakerId": meeting_chunk.speaker_id,
+            "speakerLabel": meeting_chunk.speaker_label if self.config and self.config.meeting_speaker_labels_enabled else "",
+            "source": meeting_chunk.source,
+            "sourceLang": meeting_chunk.chunk.detected_lang,
+            "targetLang": self.config.target_lang if self.config is not None else "",
+            "text": source_text,
+            "translatedText": translated_text,
+            "tsStartMs": meeting_chunk.chunk.started_at_ms,
+            "tsEndMs": meeting_chunk.chunk.ended_at_ms,
+        })
+
+    def _emit_chunk_from_source(self, chunk: TranscriptChunk, source: str) -> None:
+        speaker_id, speaker_label = self._build_meeting_label(source)
+        meeting_chunk = MeetingChunk(
+            chunk=chunk,
+            source=source,
+            speaker_id=speaker_id,
+            speaker_label=speaker_label,
+        )
+        self._emit_meeting_chunk(meeting_chunk)
+        if self._should_translate(chunk) and self.config is not None:
+            self.translation_queue.put((meeting_chunk, self.config))
+
+    def _flush_meeting_transcribers(self) -> None:
+        for source, transcriber in (("microphone", self.meeting_mic_transcriber), ("system", self.meeting_system_transcriber)):
+            if transcriber is None:
+                continue
+            flush = getattr(transcriber, "flush", None)
+            if not callable(flush):
+                continue
+            try:
+                base_time_ms = now_ms()
+                for chunk in flush(base_time_ms):
+                    self._emit_chunk_from_source(chunk, source)
+            except Exception as error:
+                trace_debug(f"meeting flush failed source={source} session={self.config.session_id if self.config else 'none'} error={error}")
+
     def _emit_final_chunk(self, chunk: TranscriptChunk) -> None:
         if self.transcriber is not None:
             self.transcriber.finalized_ids.add(chunk.segment_id)
@@ -2099,9 +2205,55 @@ class SidecarApp:
         if should:
             self.translation_queue.put((chunk, self.config))
 
-    def _stream_loop(self) -> None:
+    def _run_meeting_stream_loop(self) -> None:
         emit({"type": "session_state", "state": "streaming"})
         assert self.config is not None
+        assert self.capture is not None
+
+        session_start_ms = now_ms()
+
+        while not self.stop_event.is_set():
+            time.sleep(0.025)
+            incoming_mic = self.capture.drain_primary() if self.config.meeting_source_mode in {"microphone", "dual"} else np.zeros(0, dtype=np.float32)
+            incoming_system = self.capture.drain_output() if self.config.meeting_source_mode == "dual" else np.zeros(0, dtype=np.float32)
+            if self.config.meeting_source_mode == "system-audio":
+                incoming_system = self.capture.drain_primary()
+
+            emit({
+                "type": "metrics",
+                "inputLevel": self.capture.level,
+                "processingLagMs": 0,
+                "queueDepth": self.capture.queue.qsize(),
+            })
+
+            for source, incoming, transcriber in (
+                ("microphone", incoming_mic, self.meeting_mic_transcriber),
+                ("system", incoming_system, self.meeting_system_transcriber),
+            ):
+                if transcriber is None or incoming.size == 0:
+                    continue
+                base_time_ms = session_start_ms + int(self.meeting_samples_fed[source] / SAMPLE_RATE * 1000)
+                self.meeting_samples_fed[source] += incoming.size
+                started_at = now_ms()
+                chunks = transcriber.feed_audio(incoming, base_time_ms)
+                inference_ms = now_ms() - started_at
+                for chunk in chunks:
+                    self._emit_chunk_from_source(chunk, source)
+                if inference_ms > 0:
+                    emit({
+                        "type": "metrics",
+                        "inputLevel": self.capture.level,
+                        "processingLagMs": inference_ms,
+                        "queueDepth": self.capture.queue.qsize(),
+                    })
+
+    def _stream_loop(self) -> None:
+        assert self.config is not None
+        if self.config.mode == "meeting":
+            self._run_meeting_stream_loop()
+            return
+
+        emit({"type": "session_state", "state": "streaming"})
         assert self.capture is not None
         assert self.transcriber is not None
 
@@ -2156,7 +2308,8 @@ class SidecarApp:
                 batch_started_at = time.monotonic()
                 while len(batch) < 3:
                     wait_seconds = TRANSLATION_BATCH_WINDOW_MS / 1000
-                    if batch and count_words(batch[-1][0].source_text) <= SHORT_SEGMENT_WORDS:
+                    last_chunk = batch[-1][0].chunk if isinstance(batch[-1][0], MeetingChunk) else batch[-1][0]
+                    if batch and count_words(last_chunk.source_text) <= SHORT_SEGMENT_WORDS:
                         wait_seconds = 0.34
                     remaining = wait_seconds - (time.monotonic() - batch_started_at)
                     if remaining <= 0:
@@ -2165,11 +2318,13 @@ class SidecarApp:
                         next_chunk, next_config = self.translation_queue.get(timeout=remaining)
                     except queue.Empty:
                         break
+                    current_chunk = next_chunk.chunk if isinstance(next_chunk, MeetingChunk) else next_chunk
+                    batch_last_chunk = batch[-1][0].chunk if isinstance(batch[-1][0], MeetingChunk) else batch[-1][0]
                     same_langs = (
                         next_config.source_lang == config.source_lang
                         and next_config.target_lang == config.target_lang
                     )
-                    nearby = next_chunk.started_at_ms - batch[-1][0].ended_at_ms <= 1400
+                    nearby = current_chunk.started_at_ms - batch_last_chunk.ended_at_ms <= 1400
                     if same_langs and nearby:
                         batch.append((next_chunk, next_config))
                         continue
@@ -2179,10 +2334,11 @@ class SidecarApp:
                 # Use detected language from transcription when available,
                 # so Apple STT (detected_lang="en") translates en→zh-TW
                 # even when config.source_lang is "zh" (default).
-                effective_source = batch[0][0].detected_lang or config.source_lang
+                first_chunk = batch[0][0].chunk if isinstance(batch[0][0], MeetingChunk) else batch[0][0]
+                effective_source = first_chunk.detected_lang or config.source_lang
                 if effective_source in {"", "auto"}:
                     effective_source = "auto"
-                texts = [item[0].source_text for item in batch]
+                texts = [(item[0].chunk if isinstance(item[0], MeetingChunk) else item[0]).source_text for item in batch]
                 print(f"[translate] {effective_source}→{config.target_lang} texts={texts}", file=sys.stderr)
                 translated_items = self.translator.translate_many(
                     texts,
@@ -2192,18 +2348,21 @@ class SidecarApp:
                 print(f"[translate] results={translated_items}", file=sys.stderr)
                 for index, (translated_chunk, _) in enumerate(batch):
                     translated = translated_items[index] if index < len(translated_items) else ""
-                    emit({
-                        "type": "final_caption",
-                        "mode": translated_chunk.mode,
-                        "sessionId": translated_chunk.session_id,
-                        "segmentId": translated_chunk.segment_id,
-                        "sourceText": translated_chunk.source_text,
-                        "translatedText": translated,
-                        "startedAtMs": translated_chunk.started_at_ms,
-                        "endedAtMs": translated_chunk.ended_at_ms,
-                        "latencyMs": now_ms() - translated_chunk.started_at_ms,
-                        "confidence": translated_chunk.confidence,
-                    })
+                    if isinstance(translated_chunk, MeetingChunk):
+                        self._emit_meeting_chunk(translated_chunk, translated)
+                    else:
+                        emit({
+                            "type": "final_caption",
+                            "mode": translated_chunk.mode,
+                            "sessionId": translated_chunk.session_id,
+                            "segmentId": translated_chunk.segment_id,
+                            "sourceText": translated_chunk.source_text,
+                            "translatedText": translated,
+                            "startedAtMs": translated_chunk.started_at_ms,
+                            "endedAtMs": translated_chunk.ended_at_ms,
+                            "latencyMs": now_ms() - translated_chunk.started_at_ms,
+                            "confidence": translated_chunk.confidence,
+                        })
             except Exception as error:
                 emit({
                     "type": "error",

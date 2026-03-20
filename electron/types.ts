@@ -105,6 +105,7 @@ export interface DictationFinalEvent extends SessionScopedEvent {
 
 export interface MeetingCaptionEvent extends SessionScopedEvent {
   type: 'meeting_caption';
+  segmentId: string;
   speakerId: string;
   speakerLabel?: string;
   source: 'microphone' | 'system';

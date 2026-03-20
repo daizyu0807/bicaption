@@ -28,6 +28,7 @@ let settingsWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let overlaySuppressed = false;
 let saveFilePath: string | null = null;
+let meetingTranscriptFilePath: string | null = null;
 let isQuitting = false;
 let activeSessionMode: SessionMode | null = null;
 let activeSessionId: string | null = null;
@@ -82,6 +83,15 @@ function formatSaveFilename(date: Date): string {
   return `${yy}${mm}${dd}_${hh}${min}.txt`;
 }
 
+function formatMeetingTranscriptFilename(date: Date) {
+  const yy = String(date.getFullYear()).slice(2);
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yy}${mm}${dd}_${hh}${min}_meeting.md`;
+}
+
 function initSaveFile() {
   const settings = loadSettings();
   if (!settings.saveEnabled || !settings.saveDirectory) {
@@ -92,6 +102,19 @@ function initSaveFile() {
     mkdirSync(settings.saveDirectory, { recursive: true });
   }
   saveFilePath = join(settings.saveDirectory, formatSaveFilename(new Date()));
+}
+
+function initMeetingTranscriptFile() {
+  const settings = loadSettings();
+  if (!settings.meetingSaveTranscript || !settings.meetingTranscriptDirectory) {
+    meetingTranscriptFilePath = null;
+    return;
+  }
+  if (!existsSync(settings.meetingTranscriptDirectory)) {
+    mkdirSync(settings.meetingTranscriptDirectory, { recursive: true });
+  }
+  meetingTranscriptFilePath = join(settings.meetingTranscriptDirectory, formatMeetingTranscriptFilename(new Date()));
+  appendFileSync(meetingTranscriptFilePath, `# Meeting Transcript\n\nStarted: ${new Date().toISOString()}\n\n`, 'utf-8');
 }
 
 function appendCaption(event: SidecarEvent) {
@@ -112,6 +135,37 @@ function appendCaption(event: SidecarEvent) {
     line += `\n${event.translatedText}`;
   }
   appendFileSync(saveFilePath, line + '\n\n', 'utf-8');
+}
+
+function formatTimeLabel(timestampMs: number) {
+  return new Date(timestampMs).toLocaleTimeString('zh-TW', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function appendMeetingCaption(event: SidecarEvent) {
+  if (!meetingTranscriptFilePath || event.type !== 'meeting_caption' || event.mode !== 'meeting') {
+    return;
+  }
+  const settings = loadSettings();
+  const translationEnabled = settings.meetingTranslateModel !== 'disabled'
+    && settings.meetingTranslateModel !== 'off'
+    && settings.meetingTranslateModel !== 'none'
+    && settings.meetingTargetLang !== settings.meetingSourceLang;
+  if (translationEnabled && !event.translatedText) {
+    return;
+  }
+  const label = event.speakerLabel || (event.source === 'microphone' ? '我方' : '遠端');
+  const startedAt = formatTimeLabel(event.tsStartMs);
+  const endedAt = formatTimeLabel(event.tsEndMs);
+  let block = `## [${startedAt} - ${endedAt}] ${label}\n\n${event.text}`;
+  if (event.translatedText) {
+    block += `\n\n> ${event.translatedText}`;
+  }
+  appendFileSync(meetingTranscriptFilePath, block + '\n\n', 'utf-8');
 }
 
 function sendToWindows(channel: string, payload: unknown) {
@@ -316,11 +370,17 @@ function tryPasteClipboard(action: DictationOutputAction, expectedTarget: { appN
 function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionConfig {
   const isDictation = mode === 'dictation';
   const isMeeting = mode === 'meeting';
+  const meetingPrimaryDeviceId = settings.meetingSourceMode === 'system-audio'
+    ? settings.meetingSystemAudioDeviceId
+    : settings.meetingMicDeviceId;
+  const meetingSecondaryDeviceId = settings.meetingSourceMode === 'dual'
+    ? settings.meetingSystemAudioDeviceId
+    : '';
   return {
     mode,
     sessionId: randomUUID(),
-    deviceId: isMeeting ? settings.meetingMicDeviceId : isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
-    outputDeviceId: isMeeting ? settings.meetingSystemAudioDeviceId : isDictation ? '' : settings.outputDeviceId,
+    deviceId: isMeeting ? meetingPrimaryDeviceId : isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
+    outputDeviceId: isMeeting ? meetingSecondaryDeviceId : isDictation ? '' : settings.outputDeviceId,
     sourceLang: isMeeting ? settings.meetingSourceLang : isDictation ? settings.dictationSourceLang : settings.sourceLang,
     targetLang: isMeeting ? settings.meetingTargetLang : settings.targetLang,
     sttModel: isMeeting ? settings.meetingSttModel : isDictation ? settings.dictationSttModel : settings.sttModel,
@@ -351,8 +411,13 @@ function prepareSession(config: CaptionConfig) {
   overlaySuppressed = config.mode === 'subtitle' ? false : overlaySuppressed;
   if (config.mode === 'subtitle') {
     initSaveFile();
+    meetingTranscriptFilePath = null;
+  } else if (config.mode === 'meeting') {
+    saveFilePath = null;
+    initMeetingTranscriptFile();
   } else {
     saveFilePath = null;
+    meetingTranscriptFilePath = null;
   }
   activeSessionMode = config.mode;
   activeSessionId = config.sessionId;
@@ -676,6 +741,10 @@ function bindBridge() {
       setOverlayVisible(true);
     }
     appendCaption(event);
+    sendToWindows('sidecar:event', event);
+  });
+  bridge.on('meeting_caption', (event: SidecarEvent) => {
+    appendMeetingCaption(event);
     sendToWindows('sidecar:event', event);
   });
   bridge.on('metrics', forwardEvent);

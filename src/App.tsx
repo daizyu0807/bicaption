@@ -407,11 +407,17 @@ function getRecommendedSubtitleSttModel(sourceLang: string, currentModel?: strin
 function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle'): CaptionConfig {
   const isDictation = mode === 'dictation';
   const isMeeting = mode === 'meeting';
+  const meetingPrimaryDeviceId = settings.meetingSourceMode === 'system-audio'
+    ? settings.meetingSystemAudioDeviceId
+    : settings.meetingMicDeviceId;
+  const meetingSecondaryDeviceId = settings.meetingSourceMode === 'dual'
+    ? settings.meetingSystemAudioDeviceId
+    : '';
   return {
     mode,
     sessionId: crypto.randomUUID(),
-    deviceId: isMeeting ? settings.meetingMicDeviceId : isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
-    outputDeviceId: isMeeting ? settings.meetingSystemAudioDeviceId : settings.outputDeviceId,
+    deviceId: isMeeting ? meetingPrimaryDeviceId : isDictation ? settings.dictationDeviceId : settings.subtitleDeviceId,
+    outputDeviceId: isMeeting ? meetingSecondaryDeviceId : settings.outputDeviceId,
     sourceLang: isMeeting ? settings.meetingSourceLang : isDictation ? settings.dictationSourceLang : settings.sourceLang,
     targetLang: isMeeting ? settings.meetingTargetLang : settings.targetLang,
     sttModel: isMeeting ? settings.meetingSttModel : isDictation ? settings.dictationSttModel : settings.sttModel,

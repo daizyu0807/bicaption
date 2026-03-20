@@ -30,6 +30,13 @@ export const initialMeetingViewState: MeetingViewState = {
   lastError: null,
 };
 
+function upsertMeetingEntry(entries: MeetingCaptionRecord[], nextEntry: MeetingCaptionRecord) {
+  return [
+    ...entries.filter((entry) => entry.id !== nextEntry.id),
+    nextEntry,
+  ].sort((left, right) => left.startedAtMs - right.startedAtMs);
+}
+
 export function reduceMeetingEvent(state: MeetingViewState, event: SidecarEvent): MeetingViewState {
   if (event.mode !== 'meeting') {
     return state;
@@ -77,25 +84,23 @@ export function reduceMeetingEvent(state: MeetingViewState, event: SidecarEvent)
       if (!state.activeSessionId || event.sessionId !== state.activeSessionId) {
         return state;
       }
+      const existing = state.entries.find((entry) => entry.id === event.segmentId);
       return {
         ...state,
         partial: null,
-        entries: [
-          ...state.entries,
-          {
-            id: `${event.speakerId}-${event.tsStartMs}`,
-            speakerId: event.speakerId,
-            speakerLabel: event.speakerLabel,
-            source: event.source,
-            sourceLang: event.sourceLang,
-            targetLang: event.targetLang,
-            sourceText: event.text,
-            translatedText: event.translatedText,
-            startedAtMs: event.tsStartMs,
-            endedAtMs: event.tsEndMs,
-            isFinal: true,
-          },
-        ],
+        entries: upsertMeetingEntry(state.entries, {
+          id: event.segmentId,
+          speakerId: event.speakerId,
+          speakerLabel: event.speakerLabel,
+          source: event.source,
+          sourceLang: event.sourceLang,
+          targetLang: event.targetLang,
+          sourceText: event.text,
+          translatedText: event.translatedText || existing?.translatedText,
+          startedAtMs: event.tsStartMs,
+          endedAtMs: event.tsEndMs,
+          isFinal: true,
+        }),
       };
     }
     case 'session_state':
@@ -115,6 +120,8 @@ export function reduceMeetingEvent(state: MeetingViewState, event: SidecarEvent)
       return {
         ...state,
         sessionState: event.state,
+        activeSessionId: event.state === 'stopped' || event.state === 'error' ? null : state.activeSessionId,
+        partial: event.state === 'stopped' || event.state === 'error' ? null : state.partial,
         lastError: event.state === 'error' ? event.detail ?? 'Unknown error' : state.lastError,
       };
     case 'session_stopped_ack':
@@ -124,6 +131,8 @@ export function reduceMeetingEvent(state: MeetingViewState, event: SidecarEvent)
       return {
         ...state,
         sessionState: 'stopped',
+        activeSessionId: null,
+        partial: null,
       };
     case 'error':
       if (state.activeSessionId && event.sessionId !== state.activeSessionId) {
