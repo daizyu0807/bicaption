@@ -381,7 +381,7 @@ button:disabled {
 
 .settings-toggle-block {
   align-items: start;
-  padding: 6px 0;
+  padding: 0;
   border-radius: 0;
   background: transparent;
   border: 0;
@@ -413,7 +413,7 @@ button:disabled {
 
 .settings-toggle-stack {
   display: grid;
-  gap: var(--settings-space-1);
+  gap: 2px;
   align-content: start;
 }
 
@@ -471,8 +471,8 @@ button:disabled {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: var(--settings-space-2);
-  min-height: 24px;
+  gap: 6px;
+  min-height: 20px;
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -486,12 +486,12 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: var(--settings-space-2);
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .save-settings-stack {
   display: grid;
-  gap: var(--settings-space-1);
+  gap: 2px;
   align-content: start;
   margin-top: 2px;
 }
