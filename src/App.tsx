@@ -938,7 +938,13 @@ function SettingsView({
                     value={draft.dictationSourceLang}
                     onChange={(event) => {
                       const lang = event.target.value;
-                      const recommended = lang === 'auto' ? 'sensevoice' : draft.dictationSttModel === 'sensevoice' ? 'sensevoice' : 'apple-stt';
+                      const recommended = draft.dictationSttModel === 'whisper-mlx'
+                        ? 'whisper-mlx'
+                        : lang === 'auto'
+                          ? 'sensevoice'
+                          : draft.dictationSttModel === 'sensevoice'
+                            ? 'sensevoice'
+                            : 'apple-stt';
                       setDraft({ ...draft, dictationSourceLang: lang, dictationSttModel: recommended });
                     }}
                   >
@@ -1020,6 +1026,7 @@ function SettingsView({
                     value={draft.dictationSttModel}
                     onChange={(event) => setDraft({ ...draft, dictationSttModel: event.target.value })}
                   >
+                    <option value="whisper-mlx">MLX Whisper</option>
                     <option value="apple-stt">SFSpeechRecognizer</option>
                     <option value="sensevoice">SenseVoice</option>
                   </select>
@@ -1038,6 +1045,9 @@ function SettingsView({
               </div>
               {draft.dictationSttModel === 'apple-stt' && (
                 <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
+              )}
+              {draft.dictationSttModel === 'whisper-mlx' && (
+                <p className="model-hint">MLX Whisper 走停止後 batch 轉錄，適合高品質 dictation；首次使用可能需要下載模型。</p>
               )}
             </article>
           </div>

@@ -10,8 +10,10 @@ import queue
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import wave
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,6 +37,7 @@ SILERO_VAD_MODEL = os.path.join(MODEL_BASE_DIR, "silero_vad.onnx")
 APPLE_STT_BIN = os.path.join(SCRIPT_DIR, "apple-stt")
 LOCAL_LLM_REWRITE_BIN = os.path.join(SCRIPT_DIR, "local-llm-rewrite.py")
 MOONSHINE_CACHE_DIR = os.path.join(MODEL_BASE_DIR, "moonshine_voice")
+MLX_WHISPER_MODEL = os.environ.get("BICAPTION_MLX_WHISPER_MODEL", "mlx-community/whisper-large-v3-turbo")
 DEFAULT_EMIT_CONTEXT = {
     "mode": "subtitle",
     "sessionId": "bootstrap",
@@ -111,6 +114,15 @@ def normalize_moonshine_lang(source_lang: str) -> str | None:
     if normalized == "auto":
         return None
     return None
+
+
+def normalize_mlx_whisper_lang(source_lang: str) -> str | None:
+    normalized = source_lang.lower()
+    if normalized in {"", "auto"}:
+        return None
+    if normalized in {"zh-tw", "zh-hant"}:
+        return "zh"
+    return normalized
 
 
 def build_dictation_state_event(state: str, detail: str | None = None) -> dict[str, Any]:
@@ -733,6 +745,10 @@ def get_dictation_rewrite_provider(rewrite_mode: str) -> DictationRewriteProvide
 
 
 def get_streaming_transcriber(config: SessionConfig, announce: bool = True):
+    if config.stt_model == "whisper-mlx":
+        if announce:
+            emit({"type": "session_state", "state": "connecting", "detail": "Preparing MLX Whisper batch provider..."})
+        return MlxWhisperBatchTranscriber(source_lang=config.source_lang)
     if config.stt_model == "moonshine":
         if announce:
             emit({"type": "session_state", "state": "connecting", "detail": "Preparing Moonshine streaming provider..."})
@@ -793,6 +809,74 @@ class MeetingChunk:
     source: str
     speaker_id: str
     speaker_label: str
+
+
+class MlxWhisperBatchTranscriber:
+    """Batch-only dictation transcriber backed by MLX Whisper."""
+
+    def __init__(self, source_lang: str = "auto") -> None:
+        self.finalized_ids: set[str] = set()
+        self._segment_counter = 0
+        self._source_lang = normalize_mlx_whisper_lang(source_lang)
+
+    def feed_audio(self, samples: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        return []
+
+    def flush(self, base_time_ms: int) -> list[TranscriptChunk]:
+        return []
+
+    def stop(self) -> None:
+        return
+
+    def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
+        if audio.size < MIN_SPEECH_SAMPLES:
+            return []
+
+        try:
+            import mlx_whisper  # type: ignore
+        except Exception as exc:
+            raise RuntimeError(f"dependency missing: {exc}") from exc
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+            temp_path = handle.name
+        try:
+            pcm16 = np.clip(audio, -1.0, 1.0)
+            pcm16 = (pcm16 * 32767).astype(np.int16)
+            with wave.open(temp_path, "wb") as wav_file:
+                wav_file.setnchannels(CHANNELS)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(SAMPLE_RATE)
+                wav_file.writeframes(pcm16.tobytes())
+
+            kwargs: dict[str, Any] = {
+                "path_or_hf_repo": MLX_WHISPER_MODEL,
+            }
+            if self._source_lang:
+                kwargs["language"] = self._source_lang
+            result = mlx_whisper.transcribe(temp_path, **kwargs)
+            text = normalize_text(str(result.get("text", "")))
+            detected_lang = normalize_text(str(result.get("language", self._source_lang or "")))
+        finally:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+        if not text or len(text.replace(" ", "")) < 2:
+            return []
+
+        self._segment_counter += 1
+        duration_ms = int(audio.size / SAMPLE_RATE * 1000)
+        return [TranscriptChunk(
+            mode=_emit_context["mode"],
+            session_id=_emit_context["sessionId"],
+            segment_id=f"mlx-whisper-{self._segment_counter}",
+            source_text=text,
+            started_at_ms=base_time_ms,
+            ended_at_ms=base_time_ms + duration_ms,
+            confidence=0.0,
+            detected_lang=detected_lang,
+        )]
 
 
 class AudioCapture:
@@ -2055,6 +2139,12 @@ class SidecarApp:
                         )
                     except Exception as error:
                         trace_debug(f"dictation batch fallback failed session={self.config.session_id} error={error}")
+                        emit({
+                            "type": "error",
+                            "code": "dictation_batch_transcription_failed",
+                            "message": str(error),
+                            "recoverable": True,
+                        })
         if self.capture is not None:
             self.capture.stop()
             self.capture = None

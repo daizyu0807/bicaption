@@ -49,6 +49,7 @@ from sidecar import (
     build_dictation_state_event,
     looks_like_garbage_text,
     make_segment_id,
+    normalize_mlx_whisper_lang,
     normalize_text,
     normalize_moonshine_lang,
     parse_dictation_dictionary,
@@ -84,6 +85,11 @@ class TranslationProviderTest(unittest.TestCase):
 
     def test_normalize_moonshine_lang_rejects_auto(self) -> None:
         self.assertIsNone(normalize_moonshine_lang("auto"))
+
+    def test_normalize_mlx_whisper_lang_maps_traditional_chinese_and_auto(self) -> None:
+        self.assertEqual(normalize_mlx_whisper_lang("zh-TW"), "zh")
+        self.assertEqual(normalize_mlx_whisper_lang("en"), "en")
+        self.assertIsNone(normalize_mlx_whisper_lang("auto"))
 
     def test_dictation_state_event_includes_state(self) -> None:
         event = build_dictation_state_event("recording", "Dictation session started")
