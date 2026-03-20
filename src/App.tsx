@@ -751,6 +751,26 @@ function SettingsView({
                   <strong className={accessibilityPermission?.trusted ? 'hotkey-permission-ok' : 'hotkey-permission-missing'}>
                     {getPermissionLabel(accessibilityPermission, 'accessibility')}
                   </strong>
+                  {!accessibilityPermission?.trusted && (
+                    <button
+                      className="secondary"
+                      onClick={async () => {
+                        setHotkeyTestError(null);
+                        try {
+                          const granted = await window.app.requestAccessibilityPermission();
+                          setAccessibilityPermission(granted);
+                          if (!granted.trusted) {
+                            await window.app.openAccessibilitySettings();
+                            setHotkeyTestError('Accessibility 設定已開啟。允許後若仍無法使用，請重新開啟 app。');
+                          }
+                        } catch (error) {
+                          setHotkeyTestError(error instanceof Error ? error.message : 'Failed to request Accessibility permission');
+                        }
+                      }}
+                    >
+                      前往授權
+                    </button>
+                  )}
                 </div>
                 <div className="dictation-permission-row">
                   <span className="dictation-permission-copy">Input Monitoring</span>

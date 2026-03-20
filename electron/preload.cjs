@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('app', {
   downloadModels: () => ipcRenderer.invoke('models:download'),
   downloadModel: (modelKey) => ipcRenderer.invoke('models:download-one', modelKey),
   checkAccessibilityPermission: () => ipcRenderer.invoke('permissions:check-accessibility'),
+  requestAccessibilityPermission: () => ipcRenderer.invoke('permissions:request-accessibility'),
+  openAccessibilitySettings: () => ipcRenderer.invoke('permissions:open-accessibility'),
   checkInputMonitoringPermission: () => ipcRenderer.invoke('permissions:check-input-monitoring'),
   requestInputMonitoringPermission: () => ipcRenderer.invoke('permissions:request-input-monitoring'),
   openInputMonitoringSettings: () => ipcRenderer.invoke('permissions:open-input-monitoring'),

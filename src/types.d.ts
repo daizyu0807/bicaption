@@ -32,6 +32,8 @@ declare global {
       downloadModels(): Promise<{ ok: boolean }>;
       downloadModel(modelKey: string): Promise<{ ok: boolean }>;
       checkAccessibilityPermission(): Promise<{ trusted: boolean; status: string }>;
+      requestAccessibilityPermission(): Promise<{ trusted: boolean; status: string }>;
+      openAccessibilitySettings(): Promise<{ ok: boolean }>;
       checkInputMonitoringPermission(): Promise<{ trusted: boolean; available: boolean; detail?: string }>;
       requestInputMonitoringPermission(): Promise<{ trusted: boolean; available: boolean; detail?: string }>;
       openInputMonitoringSettings(): Promise<{ ok: boolean }>;

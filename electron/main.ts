@@ -889,6 +889,17 @@ function checkAccessibilityPermission() {
   };
 }
 
+function requestAccessibilityPermission() {
+  if (process.platform !== 'darwin') {
+    return { trusted: true, status: 'not-applicable' };
+  }
+  const trusted = systemPreferences.isTrustedAccessibilityClient(true);
+  return {
+    trusted,
+    status: trusted ? 'granted' : 'denied',
+  };
+}
+
 function checkInputMonitoringPermission() {
   if (process.platform !== 'darwin') {
     return { trusted: true, available: true, detail: 'not-applicable' };
@@ -961,6 +972,14 @@ async function openInputMonitoringSettings() {
   return { ok: true };
 }
 
+async function openAccessibilitySettings() {
+  if (process.platform !== 'darwin') {
+    return { ok: false };
+  }
+  await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
+  return { ok: true };
+}
+
 app.whenReady().then(() => {
   traceMain('app.whenReady entered');
   createSettingsWindow();
@@ -980,6 +999,8 @@ app.whenReady().then(() => {
     return settings;
   });
   ipcMain.handle('permissions:check-accessibility', () => checkAccessibilityPermission());
+  ipcMain.handle('permissions:request-accessibility', () => requestAccessibilityPermission());
+  ipcMain.handle('permissions:open-accessibility', () => openAccessibilitySettings());
   ipcMain.handle('permissions:check-input-monitoring', () => checkInputMonitoringPermission());
   ipcMain.handle('permissions:request-input-monitoring', () => requestInputMonitoringPermission());
   ipcMain.handle('permissions:open-input-monitoring', () => openInputMonitoringSettings());
