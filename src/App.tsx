@@ -364,6 +364,14 @@ function isTranslationEnabled(settings: AppSettings): boolean {
   return settings.sourceLang === 'auto' || settings.targetLang !== settings.sourceLang;
 }
 
+function getDefaultSubtitleTargetLang(sourceLang: string): string {
+  if (sourceLang === 'en') return 'zh-TW';
+  if (sourceLang === 'ja') return 'zh-TW';
+  if (sourceLang === 'ko') return 'zh-TW';
+  if (sourceLang === 'zh-TW') return 'en';
+  return 'zh-TW';
+}
+
 function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle'): CaptionConfig {
   const isDictation = mode === 'dictation';
   const isMeeting = mode === 'meeting';
@@ -1007,7 +1015,15 @@ function SettingsView({
                   <select value={draft.sourceLang} onChange={(event) => {
                     const lang = event.target.value;
                     const recommended = lang === 'auto' ? 'sensevoice' : 'apple-stt';
-                    setDraft({ ...draft, sourceLang: lang, sttModel: recommended });
+                    const nextDraft: AppSettings = {
+                      ...draft,
+                      sourceLang: lang,
+                      sttModel: recommended,
+                    };
+                    if (isTranslationEnabled(draft) && draft.targetLang === draft.sourceLang) {
+                      nextDraft.targetLang = getDefaultSubtitleTargetLang(lang);
+                    }
+                    setDraft(nextDraft);
                   }}>
                     <option value="auto">自動偵測</option>
                     <option value="en">English</option>
@@ -1034,7 +1050,11 @@ function SettingsView({
                     onChange={(event) => setDraft({
                       ...draft,
                       translateModel: event.target.checked ? 'google' : 'disabled',
-                      targetLang: event.target.checked ? (draft.targetLang === draft.sourceLang ? 'zh-TW' : draft.targetLang) : draft.targetLang,
+                      targetLang: event.target.checked
+                        ? (draft.targetLang === draft.sourceLang
+                          ? getDefaultSubtitleTargetLang(draft.sourceLang)
+                          : draft.targetLang)
+                        : draft.targetLang,
                     })}
                   />
                   <span>
