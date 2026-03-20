@@ -569,8 +569,8 @@ function getMeetingSpeakerLabel(
   source?: 'microphone' | 'system',
   fallbackLabel?: string,
 ) {
-  if (speakerKind === 'verified-local' && fallbackLabel) {
-    return fallbackLabel;
+  if (speakerKind === 'verified-local') {
+    return settings.meetingMicrophoneLabel || (fallbackLabel && fallbackLabel !== '我方' ? fallbackLabel : '') || '我方';
   }
   if (source === 'microphone') {
     return settings.meetingMicrophoneLabel || fallbackLabel || '我方';
@@ -655,6 +655,8 @@ function SettingsView({
   const [meetingNotesError, setMeetingNotesError] = useState<string | null>(null);
   const [meetingReportStatus, setMeetingReportStatus] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle');
   const [meetingReportMessage, setMeetingReportMessage] = useState<string | null>(null);
+  const [meetingEnrollmentStatus, setMeetingEnrollmentStatus] = useState<'idle' | 'enrolling' | 'ready' | 'error'>('idle');
+  const [meetingEnrollmentError, setMeetingEnrollmentError] = useState<string | null>(null);
   const [accessibilityPermission, setAccessibilityPermission] = useState<{ trusted: boolean; status: string } | null>(null);
   const [inputMonitoringPermission, setInputMonitoringPermission] = useState<{ trusted: boolean; available: boolean; detail?: string } | null>(null);
   const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
@@ -666,6 +668,7 @@ function SettingsView({
   const modelsReady = isStreamingModelReady(localModelStatus, draft.sttModel);
   const meetingModelsReady = isStreamingModelReady(localModelStatus, draft.meetingSttModel);
   const isDownloading = downloadProgress !== null;
+  const meetingLocalSpeakerReady = Boolean(draft.meetingLocalSpeakerFingerprint && draft.meetingLocalSpeakerProfileId);
   const subtitleModelEntries = MODEL_LIBRARY.map((entry) => ({
     ...entry,
     ready: isModelReady(localModelStatus, entry.key),
@@ -1324,6 +1327,14 @@ function SettingsView({
                     />
                     <span>保存會議逐字稿</span>
                   </label>
+                  <label className="toggle-row settings-toggle-block settings-toggle-compact">
+                    <input
+                      type="checkbox"
+                      checked={draft.meetingLocalSpeakerVerificationEnabled}
+                      onChange={(event) => setDraft({ ...draft, meetingLocalSpeakerVerificationEnabled: event.target.checked })}
+                    />
+                    <span>啟用本機說話者驗證</span>
+                  </label>
                 </div>
                 <div className="dictation-inline-grid">
                   <label>
@@ -1344,6 +1355,67 @@ function SettingsView({
                       placeholder="遠端"
                     />
                   </label>
+                </div>
+                <div className="settings-subgroup settings-subgroup-compact save-settings-stack">
+                  <label className="toggle-row">
+                    <span>本機說話者樣本</span>
+                  </label>
+                  <div className="save-path-row">
+                    <span className="save-path-text">
+                      {meetingLocalSpeakerReady
+                        ? `已建立樣本${draft.meetingLocalSpeakerEnrolledAtMs ? ` · ${new Date(draft.meetingLocalSpeakerEnrolledAtMs).toLocaleString('zh-TW')}` : ''}`
+                        : '尚未建立樣本'}
+                    </span>
+                    <button
+                      className="secondary"
+                      disabled={!draft.meetingMicDeviceId || meetingEnrollmentStatus === 'enrolling'}
+                      onClick={async () => {
+                        try {
+                          setMeetingEnrollmentStatus('enrolling');
+                          setMeetingEnrollmentError(null);
+                          const result = await window.app.enrollMeetingLocalSpeaker({
+                            deviceId: draft.meetingMicDeviceId,
+                            durationSec: 8,
+                          });
+                          const nextSettings = {
+                            ...draft,
+                            meetingLocalSpeakerVerificationEnabled: true,
+                            meetingLocalSpeakerProfileId: result.profileId,
+                            meetingLocalSpeakerFingerprint: result.fingerprint,
+                            meetingLocalSpeakerEnrolledAtMs: result.enrolledAtMs,
+                          };
+                          setDraft(nextSettings);
+                          await onSave(nextSettings);
+                          setMeetingEnrollmentStatus('ready');
+                        } catch (error) {
+                          setMeetingEnrollmentStatus('error');
+                          setMeetingEnrollmentError(error instanceof Error ? error.message : 'Failed to enroll local speaker.');
+                        }
+                      }}
+                    >
+                      {meetingEnrollmentStatus === 'enrolling' ? '建立中…' : meetingLocalSpeakerReady ? '重新建立' : '建立樣本'}
+                    </button>
+                    <button
+                      className="secondary"
+                      disabled={!meetingLocalSpeakerReady || meetingEnrollmentStatus === 'enrolling'}
+                      onClick={async () => {
+                        const nextSettings = {
+                          ...draft,
+                          meetingLocalSpeakerVerificationEnabled: false,
+                          meetingLocalSpeakerProfileId: '',
+                          meetingLocalSpeakerFingerprint: '',
+                          meetingLocalSpeakerEnrolledAtMs: 0,
+                        };
+                        setDraft(nextSettings);
+                        await onSave(nextSettings);
+                        setMeetingEnrollmentStatus('idle');
+                        setMeetingEnrollmentError(null);
+                      }}
+                    >
+                      清除
+                    </button>
+                  </div>
+                  {meetingEnrollmentError ? <p className="error-text">{meetingEnrollmentError}</p> : null}
                 </div>
                 <label>
                   預設會議記錄 Prompt

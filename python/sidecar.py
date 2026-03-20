@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import importlib
 import json
 import math
@@ -44,6 +45,9 @@ DEFAULT_EMIT_CONTEXT = {
 }
 _emit_context = dict(DEFAULT_EMIT_CONTEXT)
 TRACE_PATH = os.environ.get("BICAPTION_TRACE_PATH", "").strip()
+LOCAL_SPEAKER_PROFILE_ID = "meeting-local-speaker"
+LOCAL_SPEAKER_MIN_ENROLL_SECONDS = 3.0
+LOCAL_SPEAKER_MATCH_THRESHOLD = 0.82
 
 
 def trace_debug(message: str) -> None:
@@ -75,6 +79,10 @@ def now_ms() -> int:
 
 def normalize_text(text: str) -> str:
     return " ".join(text.strip().split())
+
+
+def clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
 
 
 def count_words(text: str) -> int:
@@ -123,6 +131,113 @@ def normalize_mlx_whisper_lang(source_lang: str) -> str | None:
     if normalized in {"zh-tw", "zh-hant"}:
         return "zh"
     return normalized
+
+
+def build_speaker_fingerprint(audio: np.ndarray) -> list[float] | None:
+    if audio.size < int(SAMPLE_RATE * 0.8):
+        return None
+    samples = np.asarray(audio, dtype=np.float32)
+    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+    if peak <= 1e-4:
+        return None
+    samples = samples / peak
+    frame_size = 1024
+    hop_size = 512
+    if samples.size < frame_size:
+        samples = np.pad(samples, (0, frame_size - samples.size))
+    frame_count = 1 + max(0, (samples.size - frame_size) // hop_size)
+    if frame_count <= 0:
+        return None
+    window = np.hanning(frame_size).astype(np.float32)
+    band_edges_hz = [80, 180, 320, 500, 720, 1000, 1400, 1900, 2500, 3200, 4000]
+    band_sums = np.zeros(len(band_edges_hz) - 1, dtype=np.float32)
+    freq_bins = np.fft.rfftfreq(frame_size, d=1.0 / SAMPLE_RATE)
+    for index in range(frame_count):
+        start = index * hop_size
+        frame = samples[start:start + frame_size]
+        if frame.size < frame_size:
+            frame = np.pad(frame, (0, frame_size - frame.size))
+        spectrum = np.abs(np.fft.rfft(frame * window)).astype(np.float32)
+        if not np.any(spectrum):
+            continue
+        for band_index, (low_hz, high_hz) in enumerate(zip(band_edges_hz[:-1], band_edges_hz[1:])):
+            mask = (freq_bins >= low_hz) & (freq_bins < high_hz)
+            if np.any(mask):
+                band_sums[band_index] += float(np.mean(spectrum[mask]))
+    if not np.any(band_sums):
+        return None
+    features = np.log1p(band_sums)
+    features -= float(np.mean(features))
+    norm = float(np.linalg.norm(features))
+    if norm <= 1e-8:
+        return None
+    normalized = features / norm
+    return [round(float(item), 6) for item in normalized.tolist()]
+
+
+def serialize_speaker_fingerprint(features: list[float]) -> str:
+    payload = json.dumps({"v": 1, "bands": features}, separators=(",", ":")).encode("utf-8")
+    return base64.b64encode(payload).decode("ascii")
+
+
+def parse_speaker_fingerprint(payload: str) -> list[float] | None:
+    normalized = payload.strip()
+    if not normalized:
+        return None
+    try:
+        decoded = base64.b64decode(normalized.encode("ascii"))
+        parsed = json.loads(decoded.decode("utf-8"))
+    except Exception:
+        return None
+    bands = parsed.get("bands")
+    if not isinstance(bands, list) or not bands:
+        return None
+    try:
+        return [float(item) for item in bands]
+    except (TypeError, ValueError):
+        return None
+
+
+def compare_speaker_fingerprints(reference: list[float] | None, candidate: list[float] | None) -> float:
+    if not reference or not candidate or len(reference) != len(candidate):
+        return 0.0
+    ref = np.asarray(reference, dtype=np.float32)
+    cand = np.asarray(candidate, dtype=np.float32)
+    ref_norm = float(np.linalg.norm(ref))
+    cand_norm = float(np.linalg.norm(cand))
+    if ref_norm <= 1e-8 or cand_norm <= 1e-8:
+        return 0.0
+    similarity = float(np.dot(ref, cand) / (ref_norm * cand_norm))
+    return clamp(similarity, 0.0, 1.0)
+
+
+def enroll_local_speaker(device_id: str, duration_sec: float) -> dict[str, Any]:
+    effective_duration = max(LOCAL_SPEAKER_MIN_ENROLL_SECONDS, duration_sec)
+    capture = AudioCapture(device_id, 400)
+    chunks: list[np.ndarray] = []
+    started_at_ms = now_ms()
+    try:
+        capture.start()
+        deadline = time.monotonic() + effective_duration
+        while time.monotonic() < deadline:
+            time.sleep(0.05)
+            drained = capture.drain_primary()
+            if drained.size > 0:
+                chunks.append(np.copy(drained))
+    finally:
+        capture.stop()
+    if not chunks:
+        raise RuntimeError("No microphone audio was captured during enrollment.")
+    audio = np.concatenate(chunks).astype(np.float32)
+    fingerprint_features = build_speaker_fingerprint(audio)
+    if fingerprint_features is None:
+        raise RuntimeError("Enrollment audio was too short or too quiet to build a speaker fingerprint.")
+    return {
+        "profileId": LOCAL_SPEAKER_PROFILE_ID,
+        "fingerprint": serialize_speaker_fingerprint(fingerprint_features),
+        "sampleDurationMs": int(round(audio.size / SAMPLE_RATE * 1000)),
+        "enrolledAtMs": started_at_ms,
+    }
 
 
 def should_attempt_dictation_batch_fallback(
@@ -410,6 +525,9 @@ class SessionConfig:
     dictation_local_llm_runner: str = ""
     meeting_source_mode: str = "dual"
     meeting_speaker_labels_enabled: bool = True
+    meeting_local_speaker_verification_enabled: bool = False
+    meeting_local_speaker_profile_id: str = ""
+    meeting_local_speaker_fingerprint: str = ""
     meeting_notes_prompt: str = ""
     meeting_save_transcript: bool = True
     meeting_transcript_directory: str = ""
@@ -2007,6 +2125,7 @@ class SidecarApp:
         self.meeting_last_turn_id = ""
         self.meeting_last_turn_source = ""
         self.meeting_last_turn_end_ms = 0
+        self.meeting_local_speaker_reference: list[float] | None = None
         self.translation_worker = threading.Thread(target=self._translation_loop, daemon=True)
         self.translation_worker.start()
 
@@ -2062,6 +2181,9 @@ class SidecarApp:
             dictation_local_llm_runner=str(payload.get("dictationLocalLlmRunner", "")),
             meeting_source_mode=str(payload.get("meetingSourceMode", "dual")),
             meeting_speaker_labels_enabled=bool(payload.get("meetingSpeakerLabelsEnabled", True)),
+            meeting_local_speaker_verification_enabled=bool(payload.get("meetingLocalSpeakerVerificationEnabled", False)),
+            meeting_local_speaker_profile_id=str(payload.get("meetingLocalSpeakerProfileId", "")),
+            meeting_local_speaker_fingerprint=str(payload.get("meetingLocalSpeakerFingerprint", "")),
             meeting_notes_prompt=str(payload.get("meetingNotesPrompt", "")),
             meeting_save_transcript=bool(payload.get("meetingSaveTranscript", True)),
             meeting_transcript_directory=str(payload.get("meetingTranscriptDirectory", "")),
@@ -2081,6 +2203,7 @@ class SidecarApp:
             self.meeting_last_turn_id = ""
             self.meeting_last_turn_source = ""
             self.meeting_last_turn_end_ms = 0
+            self.meeting_local_speaker_reference = parse_speaker_fingerprint(self.config.meeting_local_speaker_fingerprint)
         self.stop_event.clear()
         self.active = True
         emit({"type": "session_state", "state": "connecting", "detail": f"Connecting to {self.config.device_id}"})
@@ -2245,6 +2368,22 @@ class SidecarApp:
             return "microphone", "我方"
         return "system", "遠端"
 
+    def _classify_meeting_speaker(self, source: str, audio: np.ndarray) -> tuple[str, str, float]:
+        if self.config is None or source != "microphone":
+            return "remote-default" if source == "system" else "source-default", "", 0.0
+        if not self.config.meeting_local_speaker_verification_enabled:
+            return "source-default", "", 0.0
+        reference = self.meeting_local_speaker_reference
+        if reference is None:
+            return "unverified-local", "", 0.0
+        candidate = build_speaker_fingerprint(audio)
+        if candidate is None:
+            return "unverified-local", self.config.meeting_local_speaker_profile_id, 0.0
+        confidence = compare_speaker_fingerprints(reference, candidate)
+        if confidence >= LOCAL_SPEAKER_MATCH_THRESHOLD:
+            return "verified-local", self.config.meeting_local_speaker_profile_id, confidence
+        return "unverified-local", self.config.meeting_local_speaker_profile_id, confidence
+
     def _assign_meeting_turn_id(self, source: str, chunk: TranscriptChunk) -> str:
         same_source = self.meeting_last_turn_source == source
         close_enough = (chunk.started_at_ms - self.meeting_last_turn_end_ms) <= 1800
@@ -2284,12 +2423,17 @@ class SidecarApp:
             "tsEndMs": meeting_chunk.chunk.ended_at_ms,
         })
 
-    def _emit_chunk_from_source(self, chunk: TranscriptChunk, source: str) -> None:
+    def _emit_chunk_from_source(self, chunk: TranscriptChunk, source: str, audio: np.ndarray | None = None) -> None:
         speaker_id, speaker_label = self._build_meeting_label(source)
         turn_id = self._assign_meeting_turn_id(source, chunk)
         speaker_kind = "remote-default"
+        speaker_profile_id = ""
+        speaker_match_confidence = 0.0
         if source == "microphone":
-            speaker_kind = "source-default"
+            speaker_kind, speaker_profile_id, speaker_match_confidence = self._classify_meeting_speaker(
+                source,
+                audio if audio is not None else np.zeros(0, dtype=np.float32),
+            )
         meeting_chunk = MeetingChunk(
             chunk=chunk,
             source=source,
@@ -2297,6 +2441,8 @@ class SidecarApp:
             speaker_id=speaker_id,
             speaker_label=speaker_label,
             speaker_kind=speaker_kind,
+            speaker_profile_id=speaker_profile_id,
+            speaker_match_confidence=speaker_match_confidence,
         )
         self._emit_meeting_chunk(meeting_chunk)
         if self._should_translate(chunk) and self.config is not None:
@@ -2384,7 +2530,7 @@ class SidecarApp:
                 chunks = transcriber.feed_audio(incoming, base_time_ms)
                 inference_ms = now_ms() - started_at
                 for chunk in chunks:
-                    self._emit_chunk_from_source(chunk, source)
+                    self._emit_chunk_from_source(chunk, source, incoming)
                 if inference_ms > 0:
                     emit({
                         "type": "metrics",
@@ -2534,6 +2680,9 @@ def _apply_model_dir(model_dir: str) -> None:
 def cli() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--list-devices", action="store_true")
+    parser.add_argument("--enroll-speaker", action="store_true")
+    parser.add_argument("--device-id", type=str, default="")
+    parser.add_argument("--duration-sec", type=float, default=8.0)
     parser.add_argument("--model-dir", type=str, default=None)
     args = parser.parse_args()
 
@@ -2542,6 +2691,13 @@ def cli() -> int:
 
     if args.list_devices:
         sys.stdout.write(json.dumps(list_audio_devices(), ensure_ascii=False) + "\n")
+        return 0
+
+    if args.enroll_speaker:
+        if not args.device_id:
+            raise RuntimeError("--device-id is required for --enroll-speaker")
+        result = enroll_local_speaker(args.device_id, args.duration_sec)
+        sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
         return 0
 
     return SidecarApp().run()

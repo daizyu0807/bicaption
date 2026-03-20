@@ -11,7 +11,7 @@ import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
 import { getDebugTracePath, getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
-import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, MeetingNotesRequest, MeetingNotesResult, MeetingReportRequest, MeetingReportResult, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, MeetingEnrollSpeakerRequest, MeetingEnrollSpeakerResult, MeetingNotesRequest, MeetingNotesResult, MeetingReportRequest, MeetingReportResult, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
 
 const { autoUpdater } = electronUpdater;
 
@@ -158,8 +158,8 @@ function appendMeetingCaption(event: SidecarEvent) {
   if (translationEnabled && !event.translatedText) {
     return;
   }
-  const label = event.speakerKind === 'verified-local' && event.speakerLabel
-    ? event.speakerLabel
+  const label = event.speakerKind === 'verified-local'
+    ? settings.meetingMicrophoneLabel || event.speakerLabel || '我方'
     : event.source === 'microphone'
       ? settings.meetingMicrophoneLabel
       : settings.meetingSystemLabel;
@@ -631,9 +631,37 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode): CaptionCo
     dictationLocalLlmRunner: isDictation ? settings.dictationLocalLlmRunner : undefined,
     meetingSourceMode: isMeeting ? settings.meetingSourceMode : undefined,
     meetingSpeakerLabelsEnabled: isMeeting ? settings.meetingSpeakerLabelsEnabled : undefined,
+    meetingLocalSpeakerVerificationEnabled: isMeeting ? settings.meetingLocalSpeakerVerificationEnabled : undefined,
+    meetingLocalSpeakerProfileId: isMeeting ? settings.meetingLocalSpeakerProfileId : undefined,
+    meetingLocalSpeakerFingerprint: isMeeting ? settings.meetingLocalSpeakerFingerprint : undefined,
     meetingNotesPrompt: isMeeting ? settings.meetingNotesPrompt : undefined,
     meetingSaveTranscript: isMeeting ? settings.meetingSaveTranscript : undefined,
     meetingTranscriptDirectory: isMeeting ? settings.meetingTranscriptDirectory : undefined,
+  };
+}
+
+function runMeetingLocalSpeakerEnrollment(request: MeetingEnrollSpeakerRequest): MeetingEnrollSpeakerResult {
+  const { command: sidecarCmd, args: sidecarArgs } = getSidecarCommand();
+  const output = execFileSync(sidecarCmd, [
+    ...sidecarArgs,
+    '--enroll-speaker',
+    '--device-id',
+    request.deviceId,
+    '--duration-sec',
+    String(request.durationSec ?? 8),
+  ], {
+    cwd: getSpawnCwd(),
+    encoding: 'utf-8',
+  }).trim();
+  const parsed = JSON.parse(output) as Partial<MeetingEnrollSpeakerResult>;
+  if (!parsed.profileId || !parsed.fingerprint) {
+    throw new Error('Speaker enrollment returned an invalid result.');
+  }
+  return {
+    profileId: String(parsed.profileId),
+    fingerprint: String(parsed.fingerprint),
+    sampleDurationMs: Number(parsed.sampleDurationMs ?? 0),
+    enrolledAtMs: Number(parsed.enrolledAtMs ?? Date.now()),
   };
 }
 
@@ -1357,6 +1385,16 @@ app.whenReady().then(() => {
       throw new Error('No audio devices were detected. Check microphone permission and connected audio devices, then restart the app.');
     }
     return devices;
+  });
+  ipcMain.handle('meeting:enroll-local-speaker', async (_event, request: MeetingEnrollSpeakerRequest) => {
+    const hasAccess = await ensureMicrophoneAccess();
+    if (!hasAccess) {
+      throw new Error('Microphone permission was denied. Allow microphone access in System Settings and restart the app.');
+    }
+    if (!request?.deviceId) {
+      throw new Error('A microphone device must be selected before speaker enrollment.');
+    }
+    return runMeetingLocalSpeakerEnrollment(request);
   });
   ipcMain.handle('app:show-settings', () => {
     showSettingsWindow();

@@ -54,6 +54,10 @@ export const defaultSettings: AppSettings = {
   meetingSpeakerLabelsEnabled: true,
   meetingMicrophoneLabel: '我方',
   meetingSystemLabel: '遠端',
+  meetingLocalSpeakerVerificationEnabled: false,
+  meetingLocalSpeakerProfileId: '',
+  meetingLocalSpeakerFingerprint: '',
+  meetingLocalSpeakerEnrolledAtMs: 0,
   meetingNotesPrompt: `請根據以下會議逐字稿整理成結構化會議記錄。
 
 輸出要求：
@@ -104,6 +108,10 @@ export function loadSettings(): AppSettings {
     meetingSpeakerLabelsEnabled: stored.meetingSpeakerLabelsEnabled ?? defaultSettings.meetingSpeakerLabelsEnabled,
     meetingMicrophoneLabel: stored.meetingMicrophoneLabel ?? defaultSettings.meetingMicrophoneLabel,
     meetingSystemLabel: stored.meetingSystemLabel ?? defaultSettings.meetingSystemLabel,
+    meetingLocalSpeakerVerificationEnabled: stored.meetingLocalSpeakerVerificationEnabled ?? defaultSettings.meetingLocalSpeakerVerificationEnabled,
+    meetingLocalSpeakerProfileId: stored.meetingLocalSpeakerProfileId ?? defaultSettings.meetingLocalSpeakerProfileId,
+    meetingLocalSpeakerFingerprint: stored.meetingLocalSpeakerFingerprint ?? defaultSettings.meetingLocalSpeakerFingerprint,
+    meetingLocalSpeakerEnrolledAtMs: stored.meetingLocalSpeakerEnrolledAtMs ?? defaultSettings.meetingLocalSpeakerEnrolledAtMs,
     meetingNotesPrompt: stored.meetingNotesPrompt ?? defaultSettings.meetingNotesPrompt,
     meetingSaveTranscript: stored.meetingSaveTranscript ?? defaultSettings.meetingSaveTranscript,
     meetingTranscriptDirectory: stored.meetingTranscriptDirectory ?? stored.saveDirectory ?? defaultSettings.meetingTranscriptDirectory,

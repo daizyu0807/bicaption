@@ -40,6 +40,9 @@ export interface CaptionConfig {
   dictationLocalLlmRunner?: string;
   meetingSourceMode?: 'system-audio' | 'microphone' | 'dual';
   meetingSpeakerLabelsEnabled?: boolean;
+  meetingLocalSpeakerVerificationEnabled?: boolean;
+  meetingLocalSpeakerProfileId?: string;
+  meetingLocalSpeakerFingerprint?: string;
   meetingNotesPrompt?: string;
   meetingSaveTranscript?: boolean;
   meetingTranscriptDirectory?: string;
@@ -152,6 +155,18 @@ export interface MeetingReportResult {
   path: string;
 }
 
+export interface MeetingEnrollSpeakerRequest {
+  deviceId: string;
+  durationSec?: number;
+}
+
+export interface MeetingEnrollSpeakerResult {
+  profileId: string;
+  fingerprint: string;
+  sampleDurationMs: number;
+  enrolledAtMs: number;
+}
+
 export interface DictationOutputStatusEvent {
   type: 'dictation_output_status';
   action: DictationOutputAction;
@@ -233,6 +248,10 @@ export interface AppSettings {
   meetingSpeakerLabelsEnabled: boolean;
   meetingMicrophoneLabel: string;
   meetingSystemLabel: string;
+  meetingLocalSpeakerVerificationEnabled: boolean;
+  meetingLocalSpeakerProfileId: string;
+  meetingLocalSpeakerFingerprint: string;
+  meetingLocalSpeakerEnrolledAtMs: number;
   meetingNotesPrompt: string;
   meetingSaveTranscript: boolean;
   meetingTranscriptDirectory: string;

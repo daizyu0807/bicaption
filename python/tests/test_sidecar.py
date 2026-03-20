@@ -7,8 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-for module_name, attrs in {
-    "numpy": {},
+stubbed_modules = {
     "sounddevice": {},
     "sherpa_onnx": {},
     "deep_translator": {
@@ -31,17 +30,29 @@ for module_name, attrs in {
             },
         ),
     },
-}.items():
+}
+
+try:
+    import numpy  # noqa: F401
+except Exception:
+    stubbed_modules["numpy"] = {}
+
+for module_name, attrs in stubbed_modules.items():
     if module_name not in sys.modules:
         module = types.ModuleType(module_name)
         for attr_name, attr_value in attrs.items():
             setattr(module, attr_name, attr_value)
         sys.modules[module_name] = module
 
+import numpy as np
+HAS_REAL_NUMPY = hasattr(np, "array")
+
 from sidecar import (
     apply_dictation_dictionary,
     apply_dictation_rules_rewrite,
+    build_speaker_fingerprint,
     build_local_llm_rewrite_prompt,
+    compare_speaker_fingerprints,
     get_local_llm_python_bin,
     LocalLlmRewriteProvider,
     FallbackTranslator,
@@ -53,6 +64,8 @@ from sidecar import (
     normalize_text,
     normalize_moonshine_lang,
     parse_dictation_dictionary,
+    parse_speaker_fingerprint,
+    serialize_speaker_fingerprint,
     should_attempt_dictation_batch_fallback,
 )
 
@@ -106,6 +119,24 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertEqual(event["type"], "dictation_state")
         self.assertEqual(event["state"], "recording")
         self.assertEqual(event["detail"], "Dictation session started")
+
+    def test_speaker_fingerprint_round_trip_and_similarity(self) -> None:
+        if not HAS_REAL_NUMPY:
+            self.skipTest("numpy is unavailable in this test environment")
+        audio = np.array([0.2] * 16000, dtype="float32")
+        fingerprint = build_speaker_fingerprint(audio)
+        self.assertIsNotNone(fingerprint)
+        encoded = serialize_speaker_fingerprint(fingerprint or [])
+        parsed = parse_speaker_fingerprint(encoded)
+        self.assertEqual(parsed, fingerprint)
+        similarity = compare_speaker_fingerprints(fingerprint, parsed)
+        self.assertGreaterEqual(similarity, 0.99)
+
+    def test_speaker_fingerprint_rejects_too_short_audio(self) -> None:
+        if not HAS_REAL_NUMPY:
+            self.skipTest("numpy is unavailable in this test environment")
+        audio = np.array([0.2] * 1000, dtype="float32")
+        self.assertIsNone(build_speaker_fingerprint(audio))
 
     def test_dictation_final_event_normalizes_buffered_text(self) -> None:
         event = build_dictation_final_event("session-1", ["  hello", "world  "], 10, 40)
