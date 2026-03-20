@@ -6,9 +6,11 @@ import base64
 import importlib
 import json
 import math
+import multiprocessing
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -52,6 +54,10 @@ LOCAL_SPEAKER_MIN_RUNTIME_SPEECH_RATIO = 0.2
 LOCAL_SPEAKER_MIN_ENROLL_SPEECH_RATIO = 0.5
 LOCAL_SPEAKER_MIN_PEAK_LEVEL = 0.02
 LOCAL_SPEAKER_MIN_RMS_LEVEL = 0.008
+FALLBACK_FFMPEG_DIRS = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+)
 
 
 def trace_debug(message: str) -> None:
@@ -87,6 +93,34 @@ def normalize_text(text: str) -> str:
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))
+
+
+def build_child_process_env() -> dict[str, str]:
+    env = os.environ.copy()
+    path_entries: list[str] = []
+    current_path = env.get("PATH", "")
+    if current_path:
+        path_entries.extend([entry for entry in current_path.split(os.pathsep) if entry])
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        ffmpeg_dir = os.path.dirname(ffmpeg_path)
+        if ffmpeg_dir:
+            path_entries.insert(0, ffmpeg_dir)
+
+    for fallback_dir in FALLBACK_FFMPEG_DIRS:
+        if os.path.isdir(fallback_dir):
+            path_entries.append(fallback_dir)
+
+    deduped_path_entries: list[str] = []
+    seen: set[str] = set()
+    for entry in path_entries:
+        if entry not in seen:
+            deduped_path_entries.append(entry)
+            seen.add(entry)
+
+    env["PATH"] = os.pathsep.join(deduped_path_entries)
+    return env
 
 
 @dataclass
@@ -1064,6 +1098,7 @@ class MlxWhisperBatchTranscriber:
                 text=True,
                 timeout=8,
                 check=False,
+                env=build_child_process_env(),
             )
             cls._probe_result = result.returncode == 0 and "READY" in result.stdout
             trace_debug(
@@ -1102,6 +1137,7 @@ class MlxWhisperBatchTranscriber:
                 text=True,
                 timeout=120,
                 check=False,
+                env=build_child_process_env(),
             )
             if result.returncode != 0:
                 stderr = result.stderr.strip() or result.stdout.strip()
@@ -2383,6 +2419,8 @@ class SidecarApp:
             if callable(flush):
                 flush_base_ms = self.dictation_last_update_ms or self.dictation_started_at_ms or now_ms()
                 try:
+                    if isinstance(self.transcriber, AppleSttTranscriber):
+                        self.transcriber.stop()
                     flushed_chunks = flush(flush_base_ms)
                     for chunk in flushed_chunks:
                         self._emit_final_chunk(chunk)
@@ -2863,6 +2901,7 @@ def run_mlx_whisper_transcribe(audio_path: str, source_lang: str | None) -> int:
 
 
 def cli() -> int:
+    multiprocessing.freeze_support()
     parser = argparse.ArgumentParser()
     parser.add_argument("--list-devices", action="store_true")
     parser.add_argument("--enroll-speaker", action="store_true")
