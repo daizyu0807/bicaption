@@ -95,7 +95,10 @@ fi
   --hidden-import deep_translator \
   --hidden-import opencc \
   --hidden-import _sounddevice_data \
+  --hidden-import mlx \
+  --hidden-import mlx.core \
   --hidden-import mlx_whisper \
+  --collect-all mlx \
   --collect-all sherpa_onnx \
   --collect-all _sounddevice_data \
   $MLX_WHISPER_FLAG \
