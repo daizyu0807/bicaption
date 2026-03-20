@@ -20,6 +20,7 @@ const ZIPFORMER_KOREAN_ARCHIVE_URL =
 const VAD_MODEL_FILE = 'silero_vad.onnx';
 const VAD_MODEL_URL =
   'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx';
+const DEFAULT_MLX_WHISPER_MODEL = process.env.BICAPTION_MLX_WHISPER_MODEL || 'mlx-community/whisper-large-v3-turbo';
 
 export interface ModelStatus {
   sensevoice: boolean;
@@ -53,7 +54,7 @@ export class ModelDownloader extends EventEmitter {
 
   checkStatus(): ModelStatus {
     const sensevoice = existsSync(join(this.pythonDir, SENSEVOICE_MODEL_DIR, 'model.int8.onnx'));
-    const mlxWhisper = this.checkPythonModule('mlx_whisper');
+    const mlxWhisper = this.checkPythonPackage('mlx-whisper') && this.checkMlxWhisperModelReady(DEFAULT_MLX_WHISPER_MODEL);
     const whisperTinyEn = existsSync(join(this.pythonDir, WHISPER_TINY_EN_MODEL_DIR, 'tiny.en-encoder.int8.onnx'));
     const whisperSmall = existsSync(join(this.pythonDir, WHISPER_SMALL_MODEL_DIR, 'small-encoder.int8.onnx'));
     const zipformerKo = existsSync(join(this.pythonDir, ZIPFORMER_KOREAN_MODEL_DIR, 'encoder-epoch-99-avg-1.int8.onnx'));
@@ -81,6 +82,8 @@ export class ModelDownloader extends EventEmitter {
 
     if (entry.isPythonPackage) {
       await this.installPythonPackage(entry.packageName!, 'mlx-whisper');
+      if (this.aborted) return;
+      await this.prepareMlxWhisperModel(DEFAULT_MLX_WHISPER_MODEL, 'mlx-whisper');
     } else if (entry.isArchive) {
       const archiveName = `${modelKey}.tar.bz2`;
       const archivePath = join(this.pythonDir, archiveName);
@@ -109,6 +112,8 @@ export class ModelDownloader extends EventEmitter {
 
     if (!status.mlxWhisper) {
       await this.installPythonPackage('mlx-whisper', 'mlx-whisper');
+      if (this.aborted) return;
+      await this.prepareMlxWhisperModel(DEFAULT_MLX_WHISPER_MODEL, 'mlx-whisper');
       if (this.aborted) return;
     }
 
@@ -238,25 +243,23 @@ export class ModelDownloader extends EventEmitter {
     });
   }
 
-  private checkPythonModule(moduleName: string): boolean {
+  private getPythonCommand(): string {
+    const venvPython = join(process.cwd(), '.venv', 'bin', 'python');
+    return existsSync(venvPython) ? venvPython : 'python3';
+  }
+
+  private checkPythonPackage(packageName: string): boolean {
     try {
-      const pythonBin = join(process.cwd(), '.venv', 'bin', 'python');
-      execFileSync(pythonBin, ['-c', `import ${moduleName}`], { stdio: 'ignore' });
+      execFileSync(this.getPythonCommand(), ['-c', `from importlib.metadata import version; version(${JSON.stringify(packageName)})`], { stdio: 'ignore' });
       return true;
     } catch {
-      try {
-        execFileSync('python3', ['-c', `import ${moduleName}`], { stdio: 'ignore' });
-        return true;
-      } catch {
-        return false;
-      }
+      return false;
     }
   }
 
   private installPythonPackage(packageName: string, stage: 'mlx-whisper'): Promise<void> {
     return new Promise((resolve, reject) => {
-      const venvPython = join(process.cwd(), '.venv', 'bin', 'python');
-      const command = existsSync(venvPython) ? venvPython : 'python3';
+      const command = this.getPythonCommand();
       this.emitProgress({ stage, percent: 5, downloadedMB: 0, totalMB: 0 });
       const child = spawn(command, ['-m', 'pip', 'install', packageName], {
         cwd: process.cwd(),
@@ -274,6 +277,57 @@ export class ModelDownloader extends EventEmitter {
           resolve();
         } else {
           reject(new Error(`Failed to install ${packageName}`));
+        }
+      });
+      child.on('error', reject);
+    });
+  }
+
+  private checkMlxWhisperModelReady(modelId: string): boolean {
+    try {
+      execFileSync(this.getPythonCommand(), [
+        '-c',
+        [
+          'import sys',
+          'from huggingface_hub import snapshot_download',
+          'snapshot_download(repo_id=sys.argv[1], local_files_only=True)',
+        ].join('; '),
+        modelId,
+      ], { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private prepareMlxWhisperModel(modelId: string, stage: 'mlx-whisper'): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const command = this.getPythonCommand();
+      this.emitProgress({ stage, percent: 40, downloadedMB: 0, totalMB: 0 });
+      const child = spawn(command, [
+        '-c',
+        [
+          'import sys',
+          'from huggingface_hub import snapshot_download',
+          'snapshot_download(repo_id=sys.argv[1])',
+        ].join('; '),
+        modelId,
+      ], {
+        cwd: process.cwd(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      child.stdout.on('data', () => {
+        this.emitProgress({ stage, percent: 80, downloadedMB: 0, totalMB: 0 });
+      });
+      child.stderr.on('data', () => {
+        this.emitProgress({ stage, percent: 80, downloadedMB: 0, totalMB: 0 });
+      });
+      child.on('exit', (code) => {
+        if (code === 0) {
+          this.emitProgress({ stage, percent: 100, downloadedMB: 0, totalMB: 0 });
+          resolve();
+        } else {
+          reject(new Error(`Failed to prepare MLX Whisper model ${modelId}`));
         }
       });
       child.on('error', reject);

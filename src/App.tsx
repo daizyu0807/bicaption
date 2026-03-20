@@ -485,7 +485,7 @@ const MODEL_LIBRARY = [
   {
     key: 'mlx-whisper',
     label: 'MLX Whisper',
-    sizeLabel: 'package + model cache',
+    sizeLabel: 'package + model cache (~1.6 GB+)',
     description: 'Apple Silicon 上的高品質 batch 轉錄路徑，優先用於 dictation。',
   },
   {
@@ -1524,7 +1524,7 @@ function SettingsView({
                     <div className="model-card-meta">
                       <span>大小 {sizeLabel}</span>
                       {key === 'moonshine' && <span>目前走官方 moonshine-voice 套件與專案內 model cache</span>}
-                      {key === 'mlx-whisper' && <span>會透過 Python 套件安裝，實際模型會在首次轉錄時準備</span>}
+                      {key === 'mlx-whisper' && <span>安裝時會同時準備預設模型，完成後即可直接做 batch 轉錄</span>}
                       {key === 'sensevoice' && <span>推薦用於繁體中文與混語</span>}
                       {key === 'vad' && <span>字幕、語音輸入與會議字幕都需要</span>}
                     </div>
