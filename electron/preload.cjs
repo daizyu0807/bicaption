@@ -32,5 +32,6 @@ contextBridge.exposeInMainWorld('app', {
   openInputMonitoringSettings: () => ipcRenderer.invoke('permissions:open-input-monitoring'),
   testDictationHotkey: (binding) => ipcRenderer.invoke('dictation:test-hotkey', binding),
   stopDictationHotkeyTest: () => ipcRenderer.invoke('dictation:stop-hotkey-test'),
+  generateMeetingNotes: (request) => ipcRenderer.invoke('meeting:generate-notes', request),
   subscribe: (eventName, handler) => on(eventName, handler),
 });

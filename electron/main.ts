@@ -1,8 +1,8 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Tray, nativeImage, screen, shell, systemPreferences } from 'electron';
 import type { MessageBoxOptions } from 'electron';
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import electronUpdater from 'electron-updater';
@@ -11,7 +11,7 @@ import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
 import { getDebugTracePath, getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
-import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
+import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, MeetingNotesRequest, MeetingNotesResult, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
 
 const { autoUpdater } = electronUpdater;
 
@@ -166,6 +166,130 @@ function appendMeetingCaption(event: SidecarEvent) {
     block += `\n\n> ${event.translatedText}`;
   }
   appendFileSync(meetingTranscriptFilePath, block + '\n\n', 'utf-8');
+}
+
+function getLatestMeetingTranscriptPath() {
+  const settings = loadSettings();
+  const baseDir = settings.meetingTranscriptDirectory;
+  if (!baseDir || !existsSync(baseDir)) {
+    return null;
+  }
+  const candidates = readdirSync(baseDir)
+    .filter((entry) => entry.endsWith('_meeting.md'))
+    .map((entry) => {
+      const path = join(baseDir, entry);
+      return {
+        path,
+        mtimeMs: statSync(path).mtimeMs,
+      };
+    })
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+  return candidates[0]?.path ?? null;
+}
+
+function buildMeetingNotesPrompt(transcript: string, request: MeetingNotesRequest) {
+  return [
+    'You are a deterministic meeting notes generator.',
+    `Target language: ${request.targetLang}.`,
+    'Return a minified JSON object with this exact shape:',
+    '{"summary":"string","decisions":["string"],"actionItems":["string"],"risks":["string"]}',
+    'Rules:',
+    '1. Base everything strictly on the transcript.',
+    '2. Do not invent owners, dates, or decisions that are not supported by the transcript.',
+    `3. ${request.includeActionItems ? 'Include concrete action items when present.' : 'Leave actionItems empty.'}`,
+    `4. ${request.includeRisks ? 'Include open risks or unresolved questions when present.' : 'Leave risks empty.'}`,
+    `5. ${request.includeSpeakerNames ? 'Preserve speaker labels when they help clarity.' : 'Do not emphasize speaker labels.'}`,
+    '6. Keep the summary concise but useful.',
+    'Additional instructions:',
+    request.promptTemplate.trim() || 'Summarize the meeting into an executive summary with decisions and follow-ups.',
+    'Transcript:',
+    transcript.trim(),
+  ].join('\n');
+}
+
+function formatMeetingNotesMarkdown(result: MeetingNotesResult) {
+  const sections = [
+    '# Meeting Notes',
+    '',
+    '## Summary',
+    result.summary || 'No summary generated.',
+    '',
+    '## Decisions',
+    ...(result.decisions.length > 0 ? result.decisions.map((item) => `- ${item}`) : ['- None']),
+    '',
+    '## Action Items',
+    ...(result.actionItems.length > 0 ? result.actionItems.map((item) => `- ${item}`) : ['- None']),
+    '',
+    '## Risks',
+    ...(result.risks.length > 0 ? result.risks.map((item) => `- ${item}`) : ['- None']),
+    '',
+  ];
+  return sections.join('\n');
+}
+
+function runMeetingNotesGeneration(request: MeetingNotesRequest): MeetingNotesResult {
+  const transcriptPath = meetingTranscriptFilePath ?? getLatestMeetingTranscriptPath();
+  if (!transcriptPath || !existsSync(transcriptPath)) {
+    throw new Error('No saved meeting transcript was found. Start a meeting with transcript saving enabled first.');
+  }
+
+  const transcript = readFileSync(transcriptPath, 'utf-8').trim();
+  if (!transcript) {
+    throw new Error('The meeting transcript is empty.');
+  }
+
+  const prompt = buildMeetingNotesPrompt(transcript, request);
+  const localLlmScript = join(projectRoot, 'python', 'local-llm-rewrite.py');
+  if (!existsSync(localLlmScript)) {
+    throw new Error('Meeting notes generator script is unavailable.');
+  }
+
+  const venvPython = join(projectRoot, '.venv', 'bin', 'python');
+  const pythonBin = existsSync(venvPython) ? venvPython : 'python3';
+  const command = app.isPackaged ? pythonBin : '/usr/bin/arch';
+  const args = app.isPackaged ? [localLlmScript] : ['-arm64', pythonBin, localLlmScript];
+  const settings = loadSettings();
+  const rawOutput = execFileSync(command, args, {
+    cwd: getSpawnCwd(),
+    encoding: 'utf-8',
+    input: JSON.stringify({
+      prompt,
+      model: settings.dictationLocalLlmModel,
+      runner: settings.dictationLocalLlmRunner,
+    }),
+  }).trim();
+
+  let payloadText = '';
+  try {
+    const wrapped = JSON.parse(rawOutput) as { text?: string };
+    payloadText = String(wrapped.text ?? '').trim();
+  } catch {
+    payloadText = rawOutput;
+  }
+
+  let result: MeetingNotesResult;
+  try {
+    const parsed = JSON.parse(payloadText) as Partial<MeetingNotesResult>;
+    result = {
+      summary: String(parsed.summary ?? '').trim(),
+      decisions: Array.isArray(parsed.decisions) ? parsed.decisions.map((item) => String(item).trim()).filter(Boolean) : [],
+      actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems.map((item) => String(item).trim()).filter(Boolean) : [],
+      risks: Array.isArray(parsed.risks) ? parsed.risks.map((item) => String(item).trim()).filter(Boolean) : [],
+      rawPrompt: prompt,
+    };
+  } catch {
+    result = {
+      summary: payloadText || 'No summary generated.',
+      decisions: [],
+      actionItems: [],
+      risks: [],
+      rawPrompt: prompt,
+    };
+  }
+
+  const notesPath = join(dirname(transcriptPath), `${basename(transcriptPath, extname(transcriptPath))}-notes.md`);
+  writeFileSync(notesPath, formatMeetingNotesMarkdown(result), 'utf-8');
+  return result;
 }
 
 function sendToWindows(channel: string, payload: unknown) {
@@ -1172,6 +1296,9 @@ app.whenReady().then(() => {
       shell.openPath(settings.saveDirectory);
     }
     return { ok: true };
+  });
+  ipcMain.handle('meeting:generate-notes', (_event, request: MeetingNotesRequest) => {
+    return runMeetingNotesGeneration(request);
   });
   ipcMain.handle('models:check', () => {
     return modelDownloader.checkStatus();

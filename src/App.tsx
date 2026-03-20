@@ -4,6 +4,7 @@ import type {
   CaptionConfig,
   DictationHotkeyBinding,
   DictationOutputAction,
+  MeetingNotesResult,
   ModelDownloadProgress,
   ModelStatus,
   SessionMode,
@@ -617,6 +618,9 @@ function SettingsView({
   const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [localModelStatus, setLocalModelStatus] = useState(modelStatus);
+  const [meetingNotesResult, setMeetingNotesResult] = useState<MeetingNotesResult | null>(null);
+  const [meetingNotesStatus, setMeetingNotesStatus] = useState<'idle' | 'generating' | 'ready' | 'error'>('idle');
+  const [meetingNotesError, setMeetingNotesError] = useState<string | null>(null);
   const [accessibilityPermission, setAccessibilityPermission] = useState<{ trusted: boolean; status: string } | null>(null);
   const [inputMonitoringPermission, setInputMonitoringPermission] = useState<{ trusted: boolean; available: boolean; detail?: string } | null>(null);
   const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
@@ -1344,6 +1348,40 @@ function SettingsView({
                     )}
                   </div>
                 </div>
+                <div className="meeting-transcript-panel">
+                  <div className="meeting-transcript-head">
+                    <strong>會議記錄預覽</strong>
+                    <span className="meeting-transcript-status">
+                      {meetingNotesStatus === 'generating'
+                        ? '產生中'
+                        : meetingNotesStatus === 'ready'
+                          ? '已更新'
+                          : meetingNotesStatus === 'error'
+                            ? '產生失敗'
+                            : '尚未產生'}
+                    </span>
+                  </div>
+                  <div className="meeting-transcript-list">
+                    {meetingNotesError ? (
+                      <p className="meeting-transcript-empty">{meetingNotesError}</p>
+                    ) : meetingNotesResult ? (
+                      <article className="meeting-transcript-item">
+                        <p className="meeting-transcript-source">{meetingNotesResult.summary}</p>
+                        {meetingNotesResult.decisions.length > 0 ? (
+                          <p className="meeting-transcript-translation">決策：{meetingNotesResult.decisions.join('；')}</p>
+                        ) : null}
+                        {meetingNotesResult.actionItems.length > 0 ? (
+                          <p className="meeting-transcript-translation">待辦：{meetingNotesResult.actionItems.join('；')}</p>
+                        ) : null}
+                        {meetingNotesResult.risks.length > 0 ? (
+                          <p className="meeting-transcript-translation">風險：{meetingNotesResult.risks.join('；')}</p>
+                        ) : null}
+                      </article>
+                    ) : (
+                      <p className="meeting-transcript-empty">停止會議後可直接用目前 prompt 產生會議記錄，並輸出到逐字稿同資料夾。</p>
+                    )}
+                  </div>
+                </div>
               </article>
             </div>
 
@@ -1512,6 +1550,31 @@ function SettingsView({
               onClick={() => window.app.stopSession()}
             >
               停止
+            </button>
+            <button
+              className="secondary"
+              disabled={meetingNotesStatus === 'generating'}
+              onClick={async () => {
+                try {
+                  setMeetingNotesStatus('generating');
+                  setMeetingNotesError(null);
+                  const result = await window.app.generateMeetingNotes({
+                    transcriptId: meetingViewState.activeSessionId ?? 'latest',
+                    targetLang: draft.meetingTargetLang,
+                    promptTemplate: draft.meetingNotesPrompt,
+                    includeActionItems: true,
+                    includeRisks: true,
+                    includeSpeakerNames: draft.meetingSpeakerLabelsEnabled,
+                  });
+                  setMeetingNotesResult(result);
+                  setMeetingNotesStatus('ready');
+                } catch (error) {
+                  setMeetingNotesStatus('error');
+                  setMeetingNotesError(error instanceof Error ? error.message : 'Failed to generate meeting notes.');
+                }
+              }}
+            >
+              {meetingNotesStatus === 'generating' ? '產生中…' : '產生會議記錄'}
             </button>
           </>
         ) : (
