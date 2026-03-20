@@ -662,6 +662,8 @@ function runMeetingLocalSpeakerEnrollment(request: MeetingEnrollSpeakerRequest):
     fingerprint: String(parsed.fingerprint),
     sampleDurationMs: Number(parsed.sampleDurationMs ?? 0),
     enrolledAtMs: Number(parsed.enrolledAtMs ?? Date.now()),
+    speechRatio: parsed.speechRatio == null ? undefined : Number(parsed.speechRatio),
+    qualityScore: parsed.qualityScore == null ? undefined : Number(parsed.qualityScore),
   };
 }
 

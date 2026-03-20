@@ -165,6 +165,8 @@ export interface MeetingEnrollSpeakerResult {
   fingerprint: string;
   sampleDurationMs: number;
   enrolledAtMs: number;
+  speechRatio?: number;
+  qualityScore?: number;
 }
 
 export interface DictationOutputStatusEvent {

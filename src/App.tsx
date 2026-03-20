@@ -657,6 +657,7 @@ function SettingsView({
   const [meetingReportMessage, setMeetingReportMessage] = useState<string | null>(null);
   const [meetingEnrollmentStatus, setMeetingEnrollmentStatus] = useState<'idle' | 'enrolling' | 'ready' | 'error'>('idle');
   const [meetingEnrollmentError, setMeetingEnrollmentError] = useState<string | null>(null);
+  const [meetingEnrollmentResult, setMeetingEnrollmentResult] = useState<{ sampleDurationMs: number; speechRatio?: number; qualityScore?: number } | null>(null);
   const [accessibilityPermission, setAccessibilityPermission] = useState<{ trusted: boolean; status: string } | null>(null);
   const [inputMonitoringPermission, setInputMonitoringPermission] = useState<{ trusted: boolean; available: boolean; detail?: string } | null>(null);
   const [hotkeyTestError, setHotkeyTestError] = useState<string | null>(null);
@@ -674,6 +675,13 @@ function SettingsView({
     ready: isModelReady(localModelStatus, entry.key),
   }));
   const meetingTurns = buildMeetingTurns(meetingViewState.entries);
+  const meetingEnrollmentQualityLabel = meetingEnrollmentResult?.qualityScore == null
+    ? null
+    : meetingEnrollmentResult.qualityScore >= 0.8
+      ? '良好'
+      : meetingEnrollmentResult.qualityScore >= 0.6
+        ? '可用'
+        : '偏弱';
 
   useEffect(() => {
     setLocalModelStatus(modelStatus);
@@ -1385,6 +1393,11 @@ function SettingsView({
                             meetingLocalSpeakerEnrolledAtMs: result.enrolledAtMs,
                           };
                           setDraft(nextSettings);
+                          setMeetingEnrollmentResult({
+                            sampleDurationMs: result.sampleDurationMs,
+                            speechRatio: result.speechRatio,
+                            qualityScore: result.qualityScore,
+                          });
                           await onSave(nextSettings);
                           setMeetingEnrollmentStatus('ready');
                         } catch (error) {
@@ -1410,11 +1423,19 @@ function SettingsView({
                         await onSave(nextSettings);
                         setMeetingEnrollmentStatus('idle');
                         setMeetingEnrollmentError(null);
+                        setMeetingEnrollmentResult(null);
                       }}
                     >
                       清除
                     </button>
                   </div>
+                  {meetingEnrollmentResult ? (
+                    <p className="model-hint">
+                      最近樣本：{(meetingEnrollmentResult.sampleDurationMs / 1000).toFixed(1)} 秒
+                      {meetingEnrollmentResult.speechRatio != null ? ` · 語音比例 ${(meetingEnrollmentResult.speechRatio * 100).toFixed(0)}%` : ''}
+                      {meetingEnrollmentQualityLabel ? ` · 品質 ${meetingEnrollmentQualityLabel}` : ''}
+                    </p>
+                  ) : null}
                   {meetingEnrollmentError ? <p className="error-text">{meetingEnrollmentError}</p> : null}
                 </div>
                 <label>
