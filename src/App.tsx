@@ -827,7 +827,7 @@ function SettingsView({
                   <option value="polished">潤飾後</option>
                 </select>
               </label>
-              <div className="settings-subgroup settings-toggle-stack">
+              <div className="settings-subgroup settings-subgroup-compact settings-toggle-stack">
                 <label className="toggle-row settings-toggle-block">
                   <input
                     type="checkbox"
@@ -954,7 +954,7 @@ function SettingsView({
                   </select>
                 </label>
               </div>
-              <div className="settings-subgroup settings-toggle-stack">
+              <div className="settings-subgroup settings-subgroup-compact settings-toggle-stack">
                 <label className="toggle-row settings-toggle-block">
                   <input
                     type="checkbox"
@@ -1021,7 +1021,7 @@ function SettingsView({
                   <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
                 </>
               )}
-              <div className="settings-subgroup save-settings-stack">
+              <div className="settings-subgroup settings-subgroup-compact save-settings-stack">
                 <label className="toggle-row">
                   <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
                   保存字幕記錄
