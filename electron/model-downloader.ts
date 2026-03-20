@@ -1,7 +1,7 @@
 import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import https from 'node:https';
 import http from 'node:http';
 
@@ -23,6 +23,7 @@ const VAD_MODEL_URL =
 
 export interface ModelStatus {
   sensevoice: boolean;
+  mlxWhisper: boolean;
   whisperTinyEn: boolean;
   whisperSmall: boolean;
   zipformerKo: boolean;
@@ -31,7 +32,7 @@ export interface ModelStatus {
 }
 
 export interface ModelDownloadProgress {
-  stage: 'sensevoice' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad' | 'extracting';
+  stage: 'sensevoice' | 'mlx-whisper' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad' | 'extracting';
   percent: number;
   downloadedMB: number;
   totalMB: number;
@@ -52,19 +53,21 @@ export class ModelDownloader extends EventEmitter {
 
   checkStatus(): ModelStatus {
     const sensevoice = existsSync(join(this.pythonDir, SENSEVOICE_MODEL_DIR, 'model.int8.onnx'));
+    const mlxWhisper = this.checkPythonModule('mlx_whisper');
     const whisperTinyEn = existsSync(join(this.pythonDir, WHISPER_TINY_EN_MODEL_DIR, 'tiny.en-encoder.int8.onnx'));
     const whisperSmall = existsSync(join(this.pythonDir, WHISPER_SMALL_MODEL_DIR, 'small-encoder.int8.onnx'));
     const zipformerKo = existsSync(join(this.pythonDir, ZIPFORMER_KOREAN_MODEL_DIR, 'encoder-epoch-99-avg-1.int8.onnx'));
     const vad = existsSync(join(this.pythonDir, VAD_MODEL_FILE));
-    return { sensevoice, whisperTinyEn, whisperSmall, zipformerKo, vad, ready: (sensevoice || whisperTinyEn || whisperSmall || zipformerKo) && vad };
+    return { sensevoice, mlxWhisper, whisperTinyEn, whisperSmall, zipformerKo, vad, ready: (sensevoice || mlxWhisper || whisperTinyEn || whisperSmall || zipformerKo) && vad };
   }
 
   abort() {
     this.aborted = true;
   }
 
-  private static readonly MODEL_MAP: Record<string, { dir?: string; file?: string; url: string; stage: 'sensevoice' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad'; isArchive: boolean }> = {
+  private static readonly MODEL_MAP: Record<string, { dir?: string; file?: string; url?: string; stage: 'sensevoice' | 'mlx-whisper' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad'; isArchive: boolean; isPythonPackage?: boolean; packageName?: string }> = {
     sensevoice: { dir: SENSEVOICE_MODEL_DIR, url: SENSEVOICE_ARCHIVE_URL, stage: 'sensevoice', isArchive: true },
+    'mlx-whisper': { stage: 'mlx-whisper', isArchive: false, isPythonPackage: true, packageName: 'mlx-whisper' },
     'whisper-tiny-en': { dir: WHISPER_TINY_EN_MODEL_DIR, url: WHISPER_TINY_EN_ARCHIVE_URL, stage: 'whisper-tiny-en', isArchive: true },
     'whisper-small': { dir: WHISPER_SMALL_MODEL_DIR, url: WHISPER_SMALL_ARCHIVE_URL, stage: 'whisper-small', isArchive: true },
     'zipformer-ko': { dir: ZIPFORMER_KOREAN_MODEL_DIR, url: ZIPFORMER_KOREAN_ARCHIVE_URL, stage: 'zipformer-ko', isArchive: true },
@@ -76,16 +79,18 @@ export class ModelDownloader extends EventEmitter {
     const entry = ModelDownloader.MODEL_MAP[modelKey];
     if (!entry) throw new Error(`Unknown model: ${modelKey}`);
 
-    if (entry.isArchive) {
+    if (entry.isPythonPackage) {
+      await this.installPythonPackage(entry.packageName!, 'mlx-whisper');
+    } else if (entry.isArchive) {
       const archiveName = `${modelKey}.tar.bz2`;
       const archivePath = join(this.pythonDir, archiveName);
-      await this.downloadFile(entry.url, archivePath, entry.stage);
+      await this.downloadFile(entry.url!, archivePath, entry.stage);
       if (this.aborted) return;
       this.emitProgress({ stage: 'extracting', percent: 0, downloadedMB: 0, totalMB: 0 });
       await this.extractTarBz2(archivePath, this.pythonDir);
       try { rmSync(archivePath); } catch {}
     } else {
-      await this.downloadFile(entry.url, join(this.pythonDir, entry.file!), entry.stage);
+      await this.downloadFile(entry.url!, join(this.pythonDir, entry.file!), entry.stage);
     }
 
     if (!this.aborted) {
@@ -99,6 +104,11 @@ export class ModelDownloader extends EventEmitter {
 
     if (!status.vad) {
       await this.downloadFile(VAD_MODEL_URL, join(this.pythonDir, VAD_MODEL_FILE), 'vad');
+      if (this.aborted) return;
+    }
+
+    if (!status.mlxWhisper) {
+      await this.installPythonPackage('mlx-whisper', 'mlx-whisper');
       if (this.aborted) return;
     }
 
@@ -159,7 +169,7 @@ export class ModelDownloader extends EventEmitter {
     this.emit('progress', progress);
   }
 
-  private downloadFile(url: string, dest: string, stage: 'sensevoice' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad'): Promise<void> {
+  private downloadFile(url: string, dest: string, stage: 'sensevoice' | 'mlx-whisper' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad'): Promise<void> {
     return new Promise((resolve, reject) => {
       const tmpDest = dest + '.tmp';
       const doRequest = (requestUrl: string) => {
@@ -225,6 +235,48 @@ export class ModelDownloader extends EventEmitter {
           resolve();
         }
       });
+    });
+  }
+
+  private checkPythonModule(moduleName: string): boolean {
+    try {
+      const pythonBin = join(process.cwd(), '.venv', 'bin', 'python');
+      execFileSync(pythonBin, ['-c', `import ${moduleName}`], { stdio: 'ignore' });
+      return true;
+    } catch {
+      try {
+        execFileSync('python3', ['-c', `import ${moduleName}`], { stdio: 'ignore' });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  private installPythonPackage(packageName: string, stage: 'mlx-whisper'): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const venvPython = join(process.cwd(), '.venv', 'bin', 'python');
+      const command = existsSync(venvPython) ? venvPython : 'python3';
+      this.emitProgress({ stage, percent: 5, downloadedMB: 0, totalMB: 0 });
+      const child = spawn(command, ['-m', 'pip', 'install', packageName], {
+        cwd: process.cwd(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      child.stdout.on('data', () => {
+        this.emitProgress({ stage, percent: 60, downloadedMB: 0, totalMB: 0 });
+      });
+      child.stderr.on('data', () => {
+        this.emitProgress({ stage, percent: 60, downloadedMB: 0, totalMB: 0 });
+      });
+      child.on('exit', (code) => {
+        if (code === 0) {
+          this.emitProgress({ stage, percent: 100, downloadedMB: 0, totalMB: 0 });
+          resolve();
+        } else {
+          reject(new Error(`Failed to install ${packageName}`));
+        }
+      });
+      child.on('error', reject);
     });
   }
 }

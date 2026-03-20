@@ -250,6 +250,7 @@ export interface OverlayBounds {
 
 export interface ModelStatus {
   sensevoice: boolean;
+  mlxWhisper: boolean;
   whisperTinyEn: boolean;
   whisperSmall: boolean;
   zipformerKo: boolean;
@@ -258,7 +259,7 @@ export interface ModelStatus {
 }
 
 export interface ModelDownloadProgress {
-  stage: 'sensevoice' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad' | 'extracting';
+  stage: 'sensevoice' | 'mlx-whisper' | 'whisper-tiny-en' | 'whisper-small' | 'zipformer-ko' | 'vad' | 'extracting';
   percent: number;
   downloadedMB: number;
   totalMB: number;

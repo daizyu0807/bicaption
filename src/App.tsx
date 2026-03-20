@@ -448,7 +448,7 @@ function buildSessionConfig(settings: AppSettings, mode: SessionMode = 'subtitle
 function getDownloadLabel(progress: ModelDownloadProgress | null): string {
   if (!progress) return '下載模型';
   if (progress.stage === 'extracting') return '解壓縮中…';
-  const stageNames: Record<string, string> = { sensevoice: 'SenseVoice', 'apple-stt': 'SFSpeechRecognizer', vad: 'VAD' };
+  const stageNames: Record<string, string> = { sensevoice: 'SenseVoice', 'mlx-whisper': 'MLX Whisper', 'apple-stt': 'SFSpeechRecognizer', vad: 'VAD' };
   const name = stageNames[progress.stage] ?? progress.stage;
   if (progress.totalMB > 0) {
     return `下載 ${name}… ${progress.downloadedMB}/${progress.totalMB} MB (${progress.percent}%)`;
@@ -483,6 +483,12 @@ const MODEL_LIBRARY = [
     description: '多語辨識主力模型，適合繁體中文、英文與混語場景。',
   },
   {
+    key: 'mlx-whisper',
+    label: 'MLX Whisper',
+    sizeLabel: 'package + model cache',
+    description: 'Apple Silicon 上的高品質 batch 轉錄路徑，優先用於 dictation。',
+  },
+  {
     key: 'whisper-tiny-en',
     label: 'Whisper tiny.en',
     sizeLabel: '~80 MB',
@@ -514,6 +520,8 @@ function isModelReady(status: ModelStatus | null, key: (typeof MODEL_LIBRARY)[nu
       return true;
     case 'sensevoice':
       return status?.sensevoice ?? false;
+    case 'mlx-whisper':
+      return status?.mlxWhisper ?? false;
     case 'whisper-tiny-en':
       return status?.whisperTinyEn ?? false;
     case 'whisper-small':
@@ -1516,6 +1524,7 @@ function SettingsView({
                     <div className="model-card-meta">
                       <span>大小 {sizeLabel}</span>
                       {key === 'moonshine' && <span>目前走官方 moonshine-voice 套件與專案內 model cache</span>}
+                      {key === 'mlx-whisper' && <span>會透過 Python 套件安裝，實際模型會在首次轉錄時準備</span>}
                       {key === 'sensevoice' && <span>推薦用於繁體中文與混語</span>}
                       {key === 'vad' && <span>字幕、語音輸入與會議字幕都需要</span>}
                     </div>
