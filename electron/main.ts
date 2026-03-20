@@ -795,6 +795,21 @@ async function startDictationFromHotkey() {
   traceMain(`startDictationFromHotkey exit activeMode=${activeSessionMode ?? 'none'} activeSession=${activeSessionId ?? 'none'}`);
 }
 
+function emitLocalDictationProcessingState() {
+  if (activeSessionMode !== 'dictation' || !activeSessionId) {
+    return;
+  }
+  const event: SidecarEvent = {
+    type: 'dictation_state',
+    mode: 'dictation',
+    sessionId: activeSessionId,
+    state: 'processing',
+    detail: 'Finalizing dictation output',
+  };
+  showDictationOverlay();
+  sendToWindows('sidecar:event', event);
+}
+
 async function stopDictationFromHotkey() {
   traceMain(`stopDictationFromHotkey enter pressed=${String(dictationHotkeyPressed)} activeMode=${activeSessionMode ?? 'none'} transition=${String(Boolean(sessionTransitionPromise))}`);
   if (sessionTransitionPromise) {
@@ -809,6 +824,7 @@ async function stopDictationFromHotkey() {
       traceMain(`stopDictationFromHotkey skipped because activeMode=${activeSessionMode ?? 'none'}`);
       return;
     }
+    emitLocalDictationProcessingState();
     await stopActiveSession();
   });
   pendingDictationStop = false;
