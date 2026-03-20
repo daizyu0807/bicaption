@@ -549,6 +549,20 @@ function isStreamingModelReady(status: ModelStatus | null, modelKey: string) {
     : Boolean(modelReadyMap[modelKey]);
 }
 
+function getMeetingSpeakerLabel(
+  settings: Pick<AppSettings, 'meetingMicrophoneLabel' | 'meetingSystemLabel'>,
+  source?: 'microphone' | 'system',
+  fallbackLabel?: string,
+) {
+  if (source === 'microphone') {
+    return settings.meetingMicrophoneLabel || fallbackLabel || '我方';
+  }
+  if (source === 'system') {
+    return settings.meetingSystemLabel || fallbackLabel || '遠端';
+  }
+  return fallbackLabel || '未標記';
+}
+
 function getRewriteBackendLabel(backend: 'disabled' | 'rules' | 'cloud-llm' | 'local-llm' | null) {
   switch (backend) {
     case 'disabled':
@@ -1286,6 +1300,26 @@ function SettingsView({
                     <span>保存會議逐字稿</span>
                   </label>
                 </div>
+                <div className="dictation-inline-grid">
+                  <label>
+                    我方標籤
+                    <input
+                      type="text"
+                      value={draft.meetingMicrophoneLabel}
+                      onChange={(event) => setDraft({ ...draft, meetingMicrophoneLabel: event.target.value })}
+                      placeholder="我方"
+                    />
+                  </label>
+                  <label>
+                    遠端標籤
+                    <input
+                      type="text"
+                      value={draft.meetingSystemLabel}
+                      onChange={(event) => setDraft({ ...draft, meetingSystemLabel: event.target.value })}
+                      placeholder="遠端"
+                    />
+                  </label>
+                </div>
                 <label>
                   預設會議記錄 Prompt
                   <textarea
@@ -1333,6 +1367,9 @@ function SettingsView({
                       <>
                         {meetingViewState.entries.map((entry) => (
                           <article key={entry.id} className="meeting-transcript-item">
+                            <p className="meeting-transcript-translation">
+                              {getMeetingSpeakerLabel(draft, entry.source, entry.speakerLabel)}
+                            </p>
                             <p className="meeting-transcript-source">{entry.sourceText}</p>
                             {entry.translatedText ? (
                               <p className="meeting-transcript-translation">{entry.translatedText}</p>
@@ -1341,6 +1378,9 @@ function SettingsView({
                         ))}
                         {meetingViewState.partial ? (
                           <article className="meeting-transcript-item meeting-transcript-item-partial">
+                            <p className="meeting-transcript-translation">
+                              {getMeetingSpeakerLabel(draft, meetingViewState.partial.source, meetingViewState.partial.speakerLabel)}
+                            </p>
                             <p className="meeting-transcript-source">{meetingViewState.partial.sourceText}</p>
                           </article>
                         ) : null}
@@ -1565,6 +1605,11 @@ function SettingsView({
                     includeActionItems: true,
                     includeRisks: true,
                     includeSpeakerNames: draft.meetingSpeakerLabelsEnabled,
+                    transcriptText: meetingViewState.entries.map((entry) => {
+                      const speakerLabel = getMeetingSpeakerLabel(draft, entry.source, entry.speakerLabel);
+                      const translated = entry.translatedText ? `\n> ${entry.translatedText}` : '';
+                      return `## ${speakerLabel}\n${entry.sourceText}${translated}`;
+                    }).join('\n\n'),
                   });
                   setMeetingNotesResult(result);
                   setMeetingNotesStatus('ready');

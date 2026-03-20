@@ -124,6 +124,7 @@ export interface MeetingNotesRequest {
   includeActionItems: boolean;
   includeRisks: boolean;
   includeSpeakerNames: boolean;
+  transcriptText?: string;
 }
 
 export interface MeetingNotesResult {
@@ -213,6 +214,8 @@ export interface AppSettings {
   meetingSttModel: string;
   meetingTranslateModel: string;
   meetingSpeakerLabelsEnabled: boolean;
+  meetingMicrophoneLabel: string;
+  meetingSystemLabel: string;
   meetingNotesPrompt: string;
   meetingSaveTranscript: boolean;
   meetingTranscriptDirectory: string;

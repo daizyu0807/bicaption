@@ -158,7 +158,9 @@ function appendMeetingCaption(event: SidecarEvent) {
   if (translationEnabled && !event.translatedText) {
     return;
   }
-  const label = event.speakerLabel || (event.source === 'microphone' ? '我方' : '遠端');
+  const label = event.source === 'microphone'
+    ? settings.meetingMicrophoneLabel
+    : settings.meetingSystemLabel;
   const startedAt = formatTimeLabel(event.tsStartMs);
   const endedAt = formatTimeLabel(event.tsEndMs);
   let block = `## [${startedAt} - ${endedAt}] ${label}\n\n${event.text}`;
@@ -229,13 +231,11 @@ function formatMeetingNotesMarkdown(result: MeetingNotesResult) {
 
 function runMeetingNotesGeneration(request: MeetingNotesRequest): MeetingNotesResult {
   const transcriptPath = meetingTranscriptFilePath ?? getLatestMeetingTranscriptPath();
-  if (!transcriptPath || !existsSync(transcriptPath)) {
-    throw new Error('No saved meeting transcript was found. Start a meeting with transcript saving enabled first.');
-  }
-
-  const transcript = readFileSync(transcriptPath, 'utf-8').trim();
+  const transcript = (request.transcriptText ?? '').trim() || (
+    transcriptPath && existsSync(transcriptPath) ? readFileSync(transcriptPath, 'utf-8').trim() : ''
+  );
   if (!transcript) {
-    throw new Error('The meeting transcript is empty.');
+    throw new Error('No meeting transcript is available yet.');
   }
 
   const prompt = buildMeetingNotesPrompt(transcript, request);
@@ -287,7 +287,10 @@ function runMeetingNotesGeneration(request: MeetingNotesRequest): MeetingNotesRe
     };
   }
 
-  const notesPath = join(dirname(transcriptPath), `${basename(transcriptPath, extname(transcriptPath))}-notes.md`);
+  const notesBasePath = transcriptPath && existsSync(transcriptPath)
+    ? transcriptPath
+    : join(loadSettings().meetingTranscriptDirectory || getSpawnCwd(), 'latest_meeting.md');
+  const notesPath = join(dirname(notesBasePath), `${basename(notesBasePath, extname(notesBasePath))}-notes.md`);
   writeFileSync(notesPath, formatMeetingNotesMarkdown(result), 'utf-8');
   return result;
 }

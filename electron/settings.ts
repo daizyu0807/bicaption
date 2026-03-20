@@ -52,6 +52,8 @@ export const defaultSettings: AppSettings = {
   meetingSttModel: 'moonshine',
   meetingTranslateModel: 'google',
   meetingSpeakerLabelsEnabled: true,
+  meetingMicrophoneLabel: '我方',
+  meetingSystemLabel: '遠端',
   meetingNotesPrompt: `請根據以下會議逐字稿整理成結構化會議記錄。
 
 輸出要求：
@@ -100,6 +102,8 @@ export function loadSettings(): AppSettings {
     meetingTranslateModel: stored.meetingTranslateModel ?? stored.translateModel ?? defaultSettings.meetingTranslateModel,
     meetingSourceMode: stored.meetingSourceMode ?? defaultSettings.meetingSourceMode,
     meetingSpeakerLabelsEnabled: stored.meetingSpeakerLabelsEnabled ?? defaultSettings.meetingSpeakerLabelsEnabled,
+    meetingMicrophoneLabel: stored.meetingMicrophoneLabel ?? defaultSettings.meetingMicrophoneLabel,
+    meetingSystemLabel: stored.meetingSystemLabel ?? defaultSettings.meetingSystemLabel,
     meetingNotesPrompt: stored.meetingNotesPrompt ?? defaultSettings.meetingNotesPrompt,
     meetingSaveTranscript: stored.meetingSaveTranscript ?? defaultSettings.meetingSaveTranscript,
     meetingTranscriptDirectory: stored.meetingTranscriptDirectory ?? stored.saveDirectory ?? defaultSettings.meetingTranscriptDirectory,
