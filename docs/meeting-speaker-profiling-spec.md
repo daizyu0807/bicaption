@@ -134,6 +134,10 @@ Proposed fields:
 - Type-check shared types and renderer flow
 - Unit-test meeting reducer turn grouping/upsert behavior
 - Unit-test sidecar helper logic for speaker-kind resolution and fallback behavior
+- Run offline speaker benchmark manifests and track:
+  - `falseAcceptRate`
+  - `falseRejectRate`
+  - confidence distribution across positive vs negative cases
 - Manual smoke test:
   - no enrollment path still works
   - enrolled local speaker maps to named label in meeting transcript
@@ -145,6 +149,7 @@ Proposed fields:
 - Remote system audio remains fundamentally constrained by mixed conferencing output.
 
 ## Future Work
+- Offline benchmark gate before embedding backend migration
 - Optional remote experimental clustering for explicit 1v1 meetings
 - Reassignment tools for mistaken speaker labels
 - Recompute transcript labeling from saved speaker embeddings
