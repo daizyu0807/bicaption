@@ -5,15 +5,12 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statS
 import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import electronUpdater from 'electron-updater';
 import { SidecarBridge } from './sidecar.js';
 import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
 import { getDebugTracePath, getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
 import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, MeetingEnrollSpeakerRequest, MeetingEnrollSpeakerResult, MeetingNotesRequest, MeetingNotesResult, MeetingReportRequest, MeetingReportResult, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
-
-const { autoUpdater } = electronUpdater;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -42,8 +39,10 @@ let overlayMode: 'hidden' | 'subtitle' | 'dictation' = 'hidden';
 let subtitleOverlayBoundsCache: OverlayBounds | null = null;
 let dictationOverlayBoundsCache: OverlayBounds | null = null;
 let tray: Tray | null = null;
-let updateStatus: 'idle' | 'checking' | 'downloading' | 'downloaded' = 'idle';
-let manualUpdateCheckPending = false;
+let updateStatus: 'idle' | 'checking' = 'idle';
+
+const GITHUB_RELEASES_URL = 'https://github.com/daizyu0807/bicaption/releases';
+const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/daizyu0807/bicaption/releases/latest';
 
 const DEFAULT_SUBTITLE_OVERLAY_WIDTH = 900;
 const DEFAULT_SUBTITLE_OVERLAY_HEIGHT = 220;
@@ -916,13 +915,7 @@ function rebuildTrayMenu() {
   if (!tray) {
     return;
   }
-  const updateMenuLabel = updateStatus === 'checking'
-    ? '檢查更新中…'
-    : updateStatus === 'downloading'
-      ? '下載更新中…'
-      : updateStatus === 'downloaded'
-        ? '重新啟動以完成更新'
-        : '檢查更新';
+  const updateMenuLabel = updateStatus === 'checking' ? '檢查更新中…' : '檢查更新';
   const contextMenu = Menu.buildFromTemplate([
     {
       label: '打開設定',
@@ -964,12 +957,8 @@ function rebuildTrayMenu() {
     { type: 'separator' },
     {
       label: updateMenuLabel,
-      enabled: shouldEnableAutoUpdater() && updateStatus !== 'checking' && updateStatus !== 'downloading',
+      enabled: updateStatus !== 'checking',
       click: () => {
-        if (updateStatus === 'downloaded') {
-          autoUpdater.quitAndInstall();
-          return;
-        }
         void checkForAppUpdates(true);
       },
     },
@@ -1122,6 +1111,27 @@ function shouldEnableAutoUpdater() {
   return isPackaged && !isDev;
 }
 
+function normalizeVersion(version: string) {
+  return version.trim().replace(/^v/i, '');
+}
+
+function compareVersions(left: string, right: string) {
+  const leftParts = normalizeVersion(left).split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const rightParts = normalizeVersion(right).split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftPart = leftParts[index] ?? 0;
+    const rightPart = rightParts[index] ?? 0;
+    if (leftPart > rightPart) {
+      return 1;
+    }
+    if (leftPart < rightPart) {
+      return -1;
+    }
+  }
+  return 0;
+}
+
 async function showUpdateInfo(message: string, detail?: string) {
   const options: MessageBoxOptions = {
     type: 'info',
@@ -1137,107 +1147,82 @@ async function showUpdateInfo(message: string, detail?: string) {
   await dialog.showMessageBox(options);
 }
 
-function setupAutoUpdater() {
-  if (!shouldEnableAutoUpdater()) {
-    return;
+async function fetchLatestReleaseVersion() {
+  const response = await fetch(GITHUB_LATEST_RELEASE_API, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'BiCaption',
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub release check failed (${response.status})`);
   }
-
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on('checking-for-update', () => {
-    updateStatus = 'checking';
-    rebuildTrayMenu();
-  });
-
-  autoUpdater.on('update-available', async (info) => {
-    updateStatus = 'downloading';
-    rebuildTrayMenu();
-    if (manualUpdateCheckPending) {
-      manualUpdateCheckPending = false;
-      await showUpdateInfo(
-        `發現新版本 ${info.version}`,
-        'BiCaption 正在背景下載更新，完成後會提示重新啟動。',
-      );
-    }
-  });
-
-  autoUpdater.on('update-not-available', async () => {
-    updateStatus = 'idle';
-    rebuildTrayMenu();
-    if (manualUpdateCheckPending) {
-      manualUpdateCheckPending = false;
-      await showUpdateInfo('目前已是最新版本');
-    }
-  });
-
-  autoUpdater.on('error', async (error) => {
-    updateStatus = 'idle';
-    rebuildTrayMenu();
-    traceMain(`autoUpdater error=${String(error)}`);
-    if (manualUpdateCheckPending) {
-      manualUpdateCheckPending = false;
-      const options: MessageBoxOptions = {
-        type: 'error',
-        message: '檢查更新失敗',
-        detail: error instanceof Error ? error.message : String(error),
-        buttons: ['知道了'],
-      };
-      if (settingsWindow && !settingsWindow.isDestroyed()) {
-        await dialog.showMessageBox(settingsWindow, options);
-      } else {
-        await dialog.showMessageBox(options);
-      }
-    }
-  });
-
-  autoUpdater.on('update-downloaded', async (info) => {
-    updateStatus = 'downloaded';
-    rebuildTrayMenu();
-    const options: MessageBoxOptions = {
-      type: 'info',
-      message: `BiCaption ${info.version} 已下載完成`,
-      detail: '重新啟動後會自動安裝更新。',
-      buttons: ['稍後', '立即重新啟動'],
-      defaultId: 1,
-      cancelId: 0,
-    };
-    const result = settingsWindow && !settingsWindow.isDestroyed()
-      ? await dialog.showMessageBox(settingsWindow, options)
-      : await dialog.showMessageBox(options);
-    if (result.response === 1) {
-      autoUpdater.quitAndInstall();
-    }
-  });
+  const payload = await response.json() as { tag_name?: string; html_url?: string };
+  if (!payload.tag_name) {
+    throw new Error('GitHub release payload did not include tag_name');
+  }
+  return {
+    version: normalizeVersion(payload.tag_name),
+    url: payload.html_url || GITHUB_RELEASES_URL,
+  };
 }
 
 async function checkForAppUpdates(manual = false) {
   if (!shouldEnableAutoUpdater()) {
     if (manual) {
-      await showUpdateInfo('目前是開發模式或未打包版本，未啟用自動更新。');
+      await showUpdateInfo('目前是開發模式或未打包版本。', '請直接到 GitHub Releases 頁面下載最新版本。');
     }
     return;
   }
 
-  manualUpdateCheckPending = manual;
+  updateStatus = 'checking';
+  rebuildTrayMenu();
   try {
-    await autoUpdater.checkForUpdates();
+    const latest = await fetchLatestReleaseVersion();
+    const currentVersion = app.getVersion();
+    const comparison = compareVersions(latest.version, currentVersion);
+    updateStatus = 'idle';
+    rebuildTrayMenu();
+    traceMain(`releaseCheck current=${currentVersion} latest=${latest.version} comparison=${comparison}`);
+    if (comparison > 0) {
+      const options: MessageBoxOptions = {
+        type: 'info',
+        message: `發現新版本 ${latest.version}`,
+        detail: '目前版本不支援 app 內自動更新，將前往 GitHub Releases 下載最新安裝包。',
+        buttons: ['稍後', '前往下載'],
+        defaultId: 1,
+        cancelId: 0,
+      };
+      const result = settingsWindow && !settingsWindow.isDestroyed()
+        ? await dialog.showMessageBox(settingsWindow, options)
+        : await dialog.showMessageBox(options);
+      if (result.response === 1) {
+        await shell.openExternal(latest.url);
+      }
+      return;
+    }
+    if (manual) {
+      await showUpdateInfo('目前已是最新版本');
+    }
   } catch (error) {
     updateStatus = 'idle';
     rebuildTrayMenu();
-    traceMain(`checkForAppUpdates failed=${String(error)}`);
+    traceMain(`releaseCheck failed=${String(error)}`);
+    const detail = error instanceof Error ? error.message : String(error);
     if (manual) {
-      manualUpdateCheckPending = false;
       const options: MessageBoxOptions = {
-        type: 'error',
+        type: 'warning',
         message: '檢查更新失敗',
-        detail: error instanceof Error ? error.message : String(error),
-        buttons: ['知道了'],
+        detail: `${detail}\n\n可直接前往 GitHub Releases 頁面手動下載最新版本。`,
+        buttons: ['知道了', '前往下載頁'],
+        defaultId: 1,
+        cancelId: 0,
       };
-      if (settingsWindow && !settingsWindow.isDestroyed()) {
-        await dialog.showMessageBox(settingsWindow, options);
-      } else {
-        await dialog.showMessageBox(options);
+      const result = settingsWindow && !settingsWindow.isDestroyed()
+        ? await dialog.showMessageBox(settingsWindow, options)
+        : await dialog.showMessageBox(options);
+      if (result.response === 1) {
+        await shell.openExternal(GITHUB_RELEASES_URL);
       }
     }
   }
@@ -1382,7 +1367,6 @@ app.whenReady().then(() => {
   createSettingsWindow();
   createOverlayWindow();
   createTray();
-  setupAutoUpdater();
   app.dock?.hide();
 
   ipcMain.handle('settings:load', () => loadSettings());
@@ -1557,11 +1541,6 @@ app.whenReady().then(() => {
     console.error('Failed to start sidecar bridge:', err);
   }
 
-  if (shouldEnableAutoUpdater()) {
-    setTimeout(() => {
-      void checkForAppUpdates(false);
-    }, 3000);
-  }
 });
 
 app.on('activate', () => {
