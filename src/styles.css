@@ -352,6 +352,11 @@ button:disabled {
   gap: 0;
 }
 
+.settings-toggle-stack {
+  display: grid;
+  gap: 4px;
+}
+
 .settings-toggle-compact span {
   gap: 0;
 }
@@ -425,6 +430,12 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-top: 2px;
+}
+
+.save-settings-stack {
+  display: grid;
+  gap: 6px;
 }
 
 .save-path-text {

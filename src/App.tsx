@@ -825,28 +825,30 @@ function SettingsView({
                   <option value="polished">潤飾後</option>
                 </select>
               </label>
-              <label className="toggle-row settings-toggle-block">
-                <input
-                  type="checkbox"
-                  checked={localLlmEnabled}
-                  onChange={(event) => setDraft({
-                    ...draft,
-                    dictationRewriteMode: event.target.checked ? 'rules-and-local-llm' : 'rules',
-                    dictationCloudEnhancementEnabled: false,
-                  })}
-                />
-                <span>
-                  啟用本地 LLM 潤稿
-                </span>
-              </label>
-              <label className="toggle-row settings-toggle-block settings-toggle-compact">
-                <input
-                  type="checkbox"
-                  checked={draft.dictationDictionaryEnabled}
-                  onChange={(event) => setDraft({ ...draft, dictationDictionaryEnabled: event.target.checked })}
-                />
-                <span>啟用自訂字典</span>
-              </label>
+              <div className="settings-toggle-stack">
+                <label className="toggle-row settings-toggle-block">
+                  <input
+                    type="checkbox"
+                    checked={localLlmEnabled}
+                    onChange={(event) => setDraft({
+                      ...draft,
+                      dictationRewriteMode: event.target.checked ? 'rules-and-local-llm' : 'rules',
+                      dictationCloudEnhancementEnabled: false,
+                    })}
+                  />
+                  <span>
+                    啟用本地 LLM 潤稿
+                  </span>
+                </label>
+                <label className="toggle-row settings-toggle-block settings-toggle-compact">
+                  <input
+                    type="checkbox"
+                    checked={draft.dictationDictionaryEnabled}
+                    onChange={(event) => setDraft({ ...draft, dictationDictionaryEnabled: event.target.checked })}
+                  />
+                  <span>啟用自訂字典</span>
+                </label>
+              </div>
               <label>
                 自訂字典
                 <textarea
@@ -950,43 +952,41 @@ function SettingsView({
                   </select>
                 </label>
               </div>
-              <label className="toggle-row settings-toggle-block">
-                <input
-                  type="checkbox"
-                  checked={translationOn}
-                  onChange={(event) => setDraft({
-                    ...draft,
-                    translateModel: event.target.checked ? 'google' : 'disabled',
-                    targetLang: event.target.checked ? (draft.targetLang === draft.sourceLang ? 'zh-TW' : draft.targetLang) : draft.targetLang,
-                  })}
-                />
-                <span>
-                  啟用雙語字幕
-                </span>
-              </label>
-            </article>
-
-            <article className="dictation-section">
-              <h3 className="dictation-section-title">顯示</h3>
-              <label className="toggle-row settings-toggle-block">
-                <input
-                  type="checkbox"
-                  checked={!overlaySuppressedLocal}
-                  onChange={(event) => {
-                    const shouldShow = event.target.checked;
-                    if (shouldShow) {
-                      window.app.showOverlay();
-                      setOverlaySuppressedLocal(false);
-                    } else {
-                      window.app.hideOverlay();
-                      setOverlaySuppressedLocal(true);
-                    }
-                  }}
-                />
-                <span>
-                  顯示字幕
-                </span>
-              </label>
+              <div className="settings-toggle-stack">
+                <label className="toggle-row settings-toggle-block">
+                  <input
+                    type="checkbox"
+                    checked={translationOn}
+                    onChange={(event) => setDraft({
+                      ...draft,
+                      translateModel: event.target.checked ? 'google' : 'disabled',
+                      targetLang: event.target.checked ? (draft.targetLang === draft.sourceLang ? 'zh-TW' : draft.targetLang) : draft.targetLang,
+                    })}
+                  />
+                  <span>
+                    啟用雙語字幕
+                  </span>
+                </label>
+                <label className="toggle-row settings-toggle-block">
+                  <input
+                    type="checkbox"
+                    checked={!overlaySuppressedLocal}
+                    onChange={(event) => {
+                      const shouldShow = event.target.checked;
+                      if (shouldShow) {
+                        window.app.showOverlay();
+                        setOverlaySuppressedLocal(false);
+                      } else {
+                        window.app.hideOverlay();
+                        setOverlaySuppressedLocal(true);
+                      }
+                    }}
+                  />
+                  <span>
+                    顯示字幕
+                  </span>
+                </label>
+              </div>
               <div className="dictation-inline-grid">
                 <label>
                   透明度
@@ -1019,24 +1019,26 @@ function SettingsView({
                   <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
                 </>
               )}
-              <label className="toggle-row">
-                <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
-                保存字幕記錄
-              </label>
-              {draft.saveEnabled && (
-                <div className="save-path-row">
-                  <span className="save-path-text">{draft.saveDirectory || '未設定'}</span>
-                  <button className="secondary" onClick={async () => {
-                    const dir = await window.app.chooseSaveDirectory();
-                    if (dir) {
-                      setDraft({ ...draft, saveDirectory: dir });
-                    }
-                  }}>選擇</button>
-                  {draft.saveDirectory && (
-                    <button className="secondary" onClick={() => window.app.openSaveDirectory()}>查看</button>
-                  )}
-                </div>
-              )}
+              <div className="save-settings-stack">
+                <label className="toggle-row">
+                  <input type="checkbox" checked={draft.saveEnabled} onChange={(event) => setDraft({ ...draft, saveEnabled: event.target.checked })} />
+                  保存字幕記錄
+                </label>
+                {draft.saveEnabled && (
+                  <div className="save-path-row">
+                    <span className="save-path-text">{draft.saveDirectory || '未設定'}</span>
+                    <button className="secondary" onClick={async () => {
+                      const dir = await window.app.chooseSaveDirectory();
+                      if (dir) {
+                        setDraft({ ...draft, saveDirectory: dir });
+                      }
+                    }}>選擇</button>
+                    {draft.saveDirectory && (
+                      <button className="secondary" onClick={() => window.app.openSaveDirectory()}>查看</button>
+                    )}
+                  </div>
+                )}
+              </div>
             </article>
           </div>
         </div>
