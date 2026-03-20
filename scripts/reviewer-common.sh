@@ -1,7 +1,31 @@
 #!/usr/bin/env bash
 
+is_codex_sandbox() {
+  [[ -n "${CODEX_SANDBOX:-}" ]]
+}
+
+claude_needs_host_execution() {
+  is_codex_sandbox && has_claude_local_state
+}
+
 trim() {
   printf '%s' "$1" | awk '{$1=$1; print}'
+}
+
+claude_config_path() {
+  printf '%s/.claude.json' "${HOME}"
+}
+
+claude_settings_dir() {
+  printf '%s/.claude' "${HOME}"
+}
+
+has_claude_local_state() {
+  [[ -f "$(claude_config_path)" && -d "$(claude_settings_dir)" ]]
+}
+
+strip_ansi() {
+  perl -pe 's/\e\[[0-9;?]*[ -\/]*[@-~]//g; s/\e\].*?\a//g; s/\r//g;'
 }
 
 gemini_settings_path() {
@@ -49,6 +73,10 @@ status_claude() {
   output="$(claude auth status 2>&1 || true)"
   if printf '%s' "$output" | rg -q '"loggedIn"[[:space:]]*:[[:space:]]*true'; then
     echo "ready|$(trim "$output")"
+    return
+  fi
+  if claude_needs_host_execution; then
+    echo "unknown|Claude local state exists, but Codex sandbox cannot verify or use Claude auth directly; run outside sandbox or via escalated execution"
     return
   fi
   if printf '%s' "$output" | rg -q '"loggedIn"[[:space:]]*:[[:space:]]*false'; then
@@ -143,5 +171,13 @@ run_gemini_headless() {
 
 run_claude_headless() {
   local prompt="$1"
-  printf '%s' "$prompt" | claude -p --tools "" --no-session-persistence
+  if claude_needs_host_execution; then
+    echo "Claude headless execution is unavailable inside Codex sandbox; rerun outside sandbox or with escalated execution." >&2
+    return 1
+  fi
+  if command -v script >/dev/null 2>&1; then
+    script -q /dev/null claude -p "$prompt" --tools "" --no-session-persistence | strip_ansi
+    return
+  fi
+  printf '%s' "$prompt" | claude -p --tools "" --no-session-persistence | strip_ansi
 }

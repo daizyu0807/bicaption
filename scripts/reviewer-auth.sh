@@ -98,8 +98,12 @@ for reviewer in "${REVIEWERS[@]}"; do
     unknown)
       echo
       echo "[$reviewer] status unknown: $detail"
-      echo "[$reviewer] opening login flow anyway"
-      run_login "$reviewer"
+      if [[ "$reviewer" == "claude" && -n "${CODEX_SANDBOX:-}" ]]; then
+        echo "[$reviewer] skip interactive login inside Codex sandbox; use escalated execution or run this script in a normal terminal"
+      else
+        echo "[$reviewer] opening login flow anyway"
+        run_login "$reviewer"
+      fi
       ;;
     missing)
       echo
