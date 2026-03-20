@@ -5,13 +5,15 @@ import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { autoUpdater } from 'electron-updater';
+import electronUpdater from 'electron-updater';
 import { SidecarBridge } from './sidecar.js';
 import { NativeHotkeyBridge } from './native-hotkey.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { ModelDownloader } from './model-downloader.js';
 import { getDebugTracePath, getSidecarCommand, getGlobalHotkeyCommand, getModelDir, getSpawnCwd } from './paths.js';
 import type { AppSettings, CaptionConfig, DictationHotkeyBinding, DictationHotkeyEvent, DictationOutputAction, DictationOutputStatusEvent, ModelDownloadProgress, OverlayBounds, SessionMode, SidecarEvent } from './types.js';
+
+const { autoUpdater } = electronUpdater;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
