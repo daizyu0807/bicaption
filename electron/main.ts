@@ -74,6 +74,13 @@ function getTrayIconPath() {
   return join(projectRoot, 'build', 'icon.icns');
 }
 
+function getTrayAppIconPath() {
+  if (isPackaged) {
+    return join(process.resourcesPath, 'icon.icns');
+  }
+  return join(projectRoot, 'build', 'icon_1024_norm.png');
+}
+
 function createTrayTemplateImage() {
   const svg = `
     <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -103,6 +110,12 @@ function createNamedTrayImage() {
 }
 
 function createTrayImage() {
+  const appImage = nativeImage.createFromPath(getTrayAppIconPath()).resize({ width: 18, height: 18 });
+  appImage.setTemplateImage(false);
+  if (!appImage.isEmpty()) {
+    traceMain(`createTrayImage source=app-icon path=${getTrayAppIconPath()} ${describeNativeImage(appImage)}`);
+    return appImage;
+  }
   const inlineImage = createTrayTemplateImage();
   if (!inlineImage.isEmpty()) {
     traceMain(`createTrayImage source=inline ${describeNativeImage(inlineImage)}`);
