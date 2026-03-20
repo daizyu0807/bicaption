@@ -158,9 +158,11 @@ function appendMeetingCaption(event: SidecarEvent) {
   if (translationEnabled && !event.translatedText) {
     return;
   }
-  const label = event.source === 'microphone'
-    ? settings.meetingMicrophoneLabel
-    : settings.meetingSystemLabel;
+  const label = event.speakerKind === 'verified-local' && event.speakerLabel
+    ? event.speakerLabel
+    : event.source === 'microphone'
+      ? settings.meetingMicrophoneLabel
+      : settings.meetingSystemLabel;
   const startedAt = formatTimeLabel(event.tsStartMs);
   const endedAt = formatTimeLabel(event.tsEndMs);
   let block = `## [${startedAt} - ${endedAt}] ${label}\n\n${event.text}`;

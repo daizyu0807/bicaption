@@ -4,6 +4,7 @@ import type {
   CaptionConfig,
   DictationHotkeyBinding,
   DictationOutputAction,
+  MeetingSpeakerKind,
   MeetingNotesResult,
   ModelDownloadProgress,
   ModelStatus,
@@ -15,6 +16,7 @@ import { initialDictationViewState, reduceDictationEvent, reduceDictationOutputS
 import { pickPreferredInputDevice } from './device-preferences.js';
 import { getDictationHotkeyLabel, isModifierOnlyHotkey, validateDictationHotkey } from './dictation-hotkey.js';
 import { initialMeetingViewState, reduceMeetingEvent } from './meeting-state.js';
+import { buildMeetingTurns } from './meeting-turns.js';
 
 function isOverlayRoute() {
   return window.location.hash === '#overlay';
@@ -563,9 +565,13 @@ function isStreamingModelReady(status: ModelStatus | null, modelKey: string) {
 
 function getMeetingSpeakerLabel(
   settings: Pick<AppSettings, 'meetingMicrophoneLabel' | 'meetingSystemLabel'>,
+  speakerKind?: MeetingSpeakerKind,
   source?: 'microphone' | 'system',
   fallbackLabel?: string,
 ) {
+  if (speakerKind === 'verified-local' && fallbackLabel) {
+    return fallbackLabel;
+  }
   if (source === 'microphone') {
     return settings.meetingMicrophoneLabel || fallbackLabel || '我方';
   }
@@ -664,6 +670,7 @@ function SettingsView({
     ...entry,
     ready: isModelReady(localModelStatus, entry.key),
   }));
+  const meetingTurns = buildMeetingTurns(meetingViewState.entries);
 
   useEffect(() => {
     setLocalModelStatus(modelStatus);
@@ -1383,10 +1390,10 @@ function SettingsView({
                       <p className="meeting-transcript-empty">開始會議字幕後，這裡會顯示即時逐字稿與翻譯。</p>
                     ) : (
                       <>
-                        {meetingViewState.entries.map((entry) => (
+                        {meetingTurns.map((entry) => (
                           <article key={entry.id} className="meeting-transcript-item">
                             <p className="meeting-transcript-translation">
-                              {getMeetingSpeakerLabel(draft, entry.source, entry.speakerLabel)}
+                              {getMeetingSpeakerLabel(draft, entry.speakerKind, entry.source, entry.speakerLabel)}
                             </p>
                             <p className="meeting-transcript-source">{entry.sourceText}</p>
                             {entry.translatedText ? (
@@ -1397,7 +1404,12 @@ function SettingsView({
                         {meetingViewState.partial ? (
                           <article className="meeting-transcript-item meeting-transcript-item-partial">
                             <p className="meeting-transcript-translation">
-                              {getMeetingSpeakerLabel(draft, meetingViewState.partial.source, meetingViewState.partial.speakerLabel)}
+                              {getMeetingSpeakerLabel(
+                                draft,
+                                meetingViewState.partial.speakerKind,
+                                meetingViewState.partial.source,
+                                meetingViewState.partial.speakerLabel,
+                              )}
                             </p>
                             <p className="meeting-transcript-source">{meetingViewState.partial.sourceText}</p>
                           </article>
@@ -1627,8 +1639,8 @@ function SettingsView({
                     includeActionItems: true,
                     includeRisks: true,
                     includeSpeakerNames: draft.meetingSpeakerLabelsEnabled,
-                    transcriptText: meetingViewState.entries.map((entry) => {
-                      const speakerLabel = getMeetingSpeakerLabel(draft, entry.source, entry.speakerLabel);
+                    transcriptText: meetingTurns.map((entry) => {
+                      const speakerLabel = getMeetingSpeakerLabel(draft, entry.speakerKind, entry.source, entry.speakerLabel);
                       const translated = entry.translatedText ? `\n> ${entry.translatedText}` : '';
                       return `## ${speakerLabel}\n${entry.sourceText}${translated}`;
                     }).join('\n\n'),
@@ -1649,8 +1661,8 @@ function SettingsView({
               onClick={async () => {
                 try {
                   setMeetingReportStatus('exporting');
-                  const transcriptText = meetingViewState.entries.map((entry) => {
-                    const speakerLabel = getMeetingSpeakerLabel(draft, entry.source, entry.speakerLabel);
+                  const transcriptText = meetingTurns.map((entry) => {
+                    const speakerLabel = getMeetingSpeakerLabel(draft, entry.speakerKind, entry.source, entry.speakerLabel);
                     const translated = entry.translatedText ? `\n> ${entry.translatedText}` : '';
                     return `## ${speakerLabel}\n${entry.sourceText}${translated}`;
                   }).join('\n\n');

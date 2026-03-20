@@ -1,9 +1,13 @@
-import type { SidecarEvent } from '../electron/types.js';
+import type { MeetingSpeakerKind, SidecarEvent } from '../electron/types.js';
 
 export interface MeetingCaptionRecord {
   id: string;
+  turnId?: string;
   speakerId?: string;
   speakerLabel?: string;
+  speakerKind?: MeetingSpeakerKind;
+  speakerProfileId?: string;
+  speakerMatchConfidence?: number;
   sourceText: string;
   translatedText?: string;
   sourceLang?: string;
@@ -90,8 +94,12 @@ export function reduceMeetingEvent(state: MeetingViewState, event: SidecarEvent)
         partial: null,
         entries: upsertMeetingEntry(state.entries, {
           id: event.segmentId,
+          turnId: event.turnId,
           speakerId: event.speakerId,
           speakerLabel: event.speakerLabel,
+          speakerKind: event.speakerKind,
+          speakerProfileId: event.speakerProfileId,
+          speakerMatchConfidence: event.speakerMatchConfidence,
           source: event.source,
           sourceLang: event.sourceLang,
           targetLang: event.targetLang,

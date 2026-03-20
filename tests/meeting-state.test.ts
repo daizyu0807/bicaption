@@ -15,8 +15,12 @@ test('meeting reducer upserts translated captions by segment id', () => {
     mode: 'meeting',
     sessionId: 'meeting-1',
     segmentId: 'seg-1',
+    turnId: 'turn-1',
     speakerId: 'microphone',
     speakerLabel: '我方',
+    speakerKind: 'source-default',
+    speakerProfileId: '',
+    speakerMatchConfidence: 0,
     source: 'microphone',
     sourceLang: 'en',
     targetLang: 'zh-TW',
@@ -31,8 +35,12 @@ test('meeting reducer upserts translated captions by segment id', () => {
     mode: 'meeting',
     sessionId: 'meeting-1',
     segmentId: 'seg-1',
+    turnId: 'turn-1',
     speakerId: 'microphone',
     speakerLabel: '我方',
+    speakerKind: 'source-default',
+    speakerProfileId: '',
+    speakerMatchConfidence: 0,
     source: 'microphone',
     sourceLang: 'en',
     targetLang: 'zh-TW',
@@ -43,6 +51,8 @@ test('meeting reducer upserts translated captions by segment id', () => {
   });
 
   assert.equal(withTranslation.entries.length, 1);
+  assert.equal(withTranslation.entries[0]?.turnId, 'turn-1');
+  assert.equal(withTranslation.entries[0]?.speakerKind, 'source-default');
   assert.equal(withTranslation.entries[0]?.translatedText, '大家好');
 });
 

@@ -29,9 +29,21 @@
 - **Status:** in_progress
 - Actions taken:
   - Prepared implementation to follow the agreed spec instead of continuing ad-hoc design discussion.
+  - Extended `meeting_caption` foundation with `turnId`, `speakerKind`, `speakerProfileId`, and `speakerMatchConfidence`.
+  - Added sidecar turn assignment so consecutive same-source chunks can share a stable meeting turn ID.
+  - Added renderer-side turn grouping helper and reused it for transcript display, meeting notes input, and HTML report export.
+  - Added tests for meeting turn grouping and updated meeting reducer tests for the expanded event schema.
 - Files created/modified:
   - task-plan.md
   - progress.md
+  - electron/types.ts
+  - electron/main.ts
+  - python/sidecar.py
+  - src/meeting-state.ts
+  - src/meeting-turns.ts
+  - src/App.tsx
+  - tests/meeting-state.test.ts
+  - tests/meeting-turns.test.ts
 
 ## Handoff Pack
 <!-- handoff-pack:start -->
@@ -40,21 +52,28 @@ confirmed_facts:
   - Claude cross-review succeeded once invoked with `claude -p --output-format json`.
   - The safest MVP direction is microphone verification plus stronger turn-based meeting blocks.
 pending_actions:
-  - Create a local checkpoint commit for the planning/spec artifacts
-  - Implement meeting event/state changes from the agreed MVP spec
-  - Add verification tests and run validation
+  - Create a local checkpoint commit for the meeting speaker-turn foundation
+  - Implement microphone enrollment / verification foundation
+  - Add verification tests and run validation for the next chunk
 edited_files:
   - task-plan.md
-  - findings.md
   - progress.md
-  - docs/meeting-speaker-profiling-spec.md
+  - electron/types.ts
+  - electron/main.ts
+  - python/sidecar.py
+  - src/meeting-state.ts
+  - src/meeting-turns.ts
+  - src/App.tsx
+  - tests/meeting-state.test.ts
+  - tests/meeting-turns.test.ts
 tests_run:
-  - `claude auth status` succeeded
-  - `claude -p --output-format json --no-session-persistence "請只回覆 OK"` succeeded
+  - `npm run type-check` passed
+  - `npm test` passed
+  - `python3 -m unittest python.tests.test_sidecar` passed
 known_risks:
   - Mixed remote audio remains unsuitable for confident first-pass multi-speaker attribution
-  - The final MVP scope still needs to be pinned precisely in the spec before code changes begin
-next_recommended_step: Start implementing the MVP event/state changes defined in `docs/meeting-speaker-profiling-spec.md`.
+  - Speaker metadata exists, but local enrollment UX and matching logic are not implemented yet
+next_recommended_step: Implement the microphone-side enrollment and verification foundation on top of the new meeting speaker-turn metadata.
 <!-- handoff-pack:end -->
 
 ## Test Results
@@ -74,5 +93,5 @@ next_recommended_step: Start implementing the MVP event/state changes defined in
 | Where am I? | Phase 3: Implementation |
 | Where am I going? | Implement MVP, validate, deliver |
 | What's the goal? | Add a realistic meeting speaker-aware MVP without pretending mixed remote diarization is solved |
-| What have I learned? | Current meeting speaker flow is source-based; microphone verification is the highest-value next step |
-| What have I done? | Reviewed architecture, ran Claude cross-review, stabilized Claude CLI workflow, created planning artifacts |
+| What have I learned? | Current meeting speaker flow is now turn-aware in schema/UI, but real identity value still depends on microphone verification |
+| What have I done? | Wrote the spec, added planning files, implemented meeting speaker-turn metadata, and verified the new grouping path with tests |

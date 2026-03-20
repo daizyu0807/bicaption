@@ -820,8 +820,12 @@ class TranscriptChunk:
 class MeetingChunk:
     chunk: TranscriptChunk
     source: str
+    turn_id: str
     speaker_id: str
     speaker_label: str
+    speaker_kind: str = "source-default"
+    speaker_profile_id: str = ""
+    speaker_match_confidence: float = 0.0
 
 
 class MlxWhisperBatchTranscriber:
@@ -1999,6 +2003,10 @@ class SidecarApp:
         self.meeting_mic_transcriber: SenseVoiceTranscriber | MoonshineTranscriber | WhisperTinyEnTranscriber | WhisperSmallTranscriber | ZipformerKoreanTranscriber | AppleSttTranscriber | None = None
         self.meeting_system_transcriber: SenseVoiceTranscriber | MoonshineTranscriber | WhisperTinyEnTranscriber | WhisperSmallTranscriber | ZipformerKoreanTranscriber | AppleSttTranscriber | None = None
         self.meeting_samples_fed = {"microphone": 0, "system": 0}
+        self.meeting_turn_counter = 0
+        self.meeting_last_turn_id = ""
+        self.meeting_last_turn_source = ""
+        self.meeting_last_turn_end_ms = 0
         self.translation_worker = threading.Thread(target=self._translation_loop, daemon=True)
         self.translation_worker.start()
 
@@ -2069,6 +2077,10 @@ class SidecarApp:
             trace_debug(f"dictation recording session={self.config.session_id}")
         if self.config.mode == "meeting":
             self.meeting_samples_fed = {"microphone": 0, "system": 0}
+            self.meeting_turn_counter = 0
+            self.meeting_last_turn_id = ""
+            self.meeting_last_turn_source = ""
+            self.meeting_last_turn_end_ms = 0
         self.stop_event.clear()
         self.active = True
         emit({"type": "session_state", "state": "connecting", "detail": f"Connecting to {self.config.device_id}"})
@@ -2233,6 +2245,19 @@ class SidecarApp:
             return "microphone", "我方"
         return "system", "遠端"
 
+    def _assign_meeting_turn_id(self, source: str, chunk: TranscriptChunk) -> str:
+        same_source = self.meeting_last_turn_source == source
+        close_enough = (chunk.started_at_ms - self.meeting_last_turn_end_ms) <= 1800
+        if self.meeting_last_turn_id and same_source and close_enough:
+            self.meeting_last_turn_end_ms = max(self.meeting_last_turn_end_ms, chunk.ended_at_ms)
+            return self.meeting_last_turn_id
+        self.meeting_turn_counter += 1
+        next_turn_id = f"turn-{self.meeting_turn_counter}"
+        self.meeting_last_turn_id = next_turn_id
+        self.meeting_last_turn_source = source
+        self.meeting_last_turn_end_ms = chunk.ended_at_ms
+        return next_turn_id
+
     def _emit_meeting_chunk(self, meeting_chunk: MeetingChunk, translated_text: str = "") -> None:
         source_text = meeting_chunk.chunk.source_text
         if meeting_chunk.chunk.detected_lang.lower().startswith("zh") and self.config is not None:
@@ -2244,8 +2269,12 @@ class SidecarApp:
         emit({
             "type": "meeting_caption",
             "segmentId": meeting_chunk.chunk.segment_id,
+            "turnId": meeting_chunk.turn_id,
             "speakerId": meeting_chunk.speaker_id,
             "speakerLabel": meeting_chunk.speaker_label if self.config and self.config.meeting_speaker_labels_enabled else "",
+            "speakerKind": meeting_chunk.speaker_kind,
+            "speakerProfileId": meeting_chunk.speaker_profile_id,
+            "speakerMatchConfidence": meeting_chunk.speaker_match_confidence,
             "source": meeting_chunk.source,
             "sourceLang": meeting_chunk.chunk.detected_lang,
             "targetLang": self.config.target_lang if self.config is not None else "",
@@ -2257,11 +2286,17 @@ class SidecarApp:
 
     def _emit_chunk_from_source(self, chunk: TranscriptChunk, source: str) -> None:
         speaker_id, speaker_label = self._build_meeting_label(source)
+        turn_id = self._assign_meeting_turn_id(source, chunk)
+        speaker_kind = "remote-default"
+        if source == "microphone":
+            speaker_kind = "source-default"
         meeting_chunk = MeetingChunk(
             chunk=chunk,
             source=source,
+            turn_id=turn_id,
             speaker_id=speaker_id,
             speaker_label=speaker_label,
+            speaker_kind=speaker_kind,
         )
         self._emit_meeting_chunk(meeting_chunk)
         if self._should_translate(chunk) and self.config is not None:

@@ -30,8 +30,10 @@ files_to_change:
   - electron/preload.cjs
   - src/types.d.ts
   - src/meeting-state.ts
+  - src/meeting-turns.ts
   - src/App.tsx
   - tests/meeting-state.test.ts
+  - tests/meeting-turns.test.ts
   - python/tests/test_sidecar.py
 change_strategy:
   - Write a concrete MVP spec first using current codebase constraints plus Claude cross-review guidance
@@ -66,9 +68,9 @@ Phase 3
 - **Status:** complete
 
 ### Phase 3: Implementation
-- [ ] Implement sidecar and event-schema changes
-- [ ] Implement renderer/state changes
-- [ ] Add or update tests
+- [x] Implement sidecar and event-schema changes
+- [x] Implement renderer/state changes
+- [x] Add or update tests
 - **Status:** in_progress
 
 ### Phase 4: Testing & Verification
@@ -94,6 +96,7 @@ Phase 3
 | Treat microphone verification as higher-value than remote mixed-audio diarization | This matches both current dual-source architecture and Claude cross-review guidance |
 | Write spec before code changes | The user explicitly asked for spec-first execution on a protocol-changing feature |
 | First MVP will focus on turn-based meeting blocks plus local speaker verification foundations | This is the narrowest change that improves UX without false claims about mixed remote audio |
+| Implement turn grouping in a pure renderer helper before enrollment UX | This produces visible meeting UX improvement with low protocol risk and easy tests |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |

@@ -103,11 +103,17 @@ export interface DictationFinalEvent extends SessionScopedEvent {
   latencyMs: number;
 }
 
+export type MeetingSpeakerKind = 'source-default' | 'verified-local' | 'unverified-local' | 'remote-default';
+
 export interface MeetingCaptionEvent extends SessionScopedEvent {
   type: 'meeting_caption';
   segmentId: string;
+  turnId?: string;
   speakerId: string;
   speakerLabel?: string;
+  speakerKind?: MeetingSpeakerKind;
+  speakerProfileId?: string;
+  speakerMatchConfidence?: number;
   source: 'microphone' | 'system';
   sourceLang?: string;
   targetLang: string;
