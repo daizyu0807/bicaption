@@ -89,6 +89,28 @@ function createTrayTemplateImage() {
   return image.resize({ width: 18, height: 18 });
 }
 
+function describeNativeImage(image: Electron.NativeImage) {
+  const size = image.getSize();
+  return `empty=${String(image.isEmpty())} size=${size.width}x${size.height} template=${String(image.isTemplateImage())}`;
+}
+
+function createNamedTrayImage() {
+  const image = nativeImage.createFromNamedImage('NSImageNameActionTemplate');
+  image.setTemplateImage(true);
+  return image.resize({ width: 18, height: 18 });
+}
+
+function createTrayImage() {
+  const systemImage = createNamedTrayImage();
+  if (!systemImage.isEmpty()) {
+    traceMain(`createTrayImage source=named ${describeNativeImage(systemImage)}`);
+    return systemImage;
+  }
+  const inlineImage = createTrayTemplateImage();
+  traceMain(`createTrayImage source=inline ${describeNativeImage(inlineImage)}`);
+  return inlineImage;
+}
+
 function formatSaveFilename(date: Date): string {
   const yy = String(date.getFullYear()).slice(2);
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -950,8 +972,8 @@ function createTray() {
   }
   const trayIconPath = getTrayIconPath();
   const fileImage = nativeImage.createFromPath(trayIconPath);
-  const trayImage = createTrayTemplateImage();
-  traceMain(`createTray iconPath=${trayIconPath} fileEmpty=${String(fileImage.isEmpty())} using=inline-template`);
+  const trayImage = createTrayImage();
+  traceMain(`createTray iconPath=${trayIconPath} file=${describeNativeImage(fileImage)} tray=${describeNativeImage(trayImage)}`);
   tray = new Tray(trayImage);
   tray.setTitle('');
   tray.setToolTip('BiCaption');
