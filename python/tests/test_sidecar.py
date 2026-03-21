@@ -54,6 +54,7 @@ from sidecar import (
     build_speaker_fingerprint,
     build_local_llm_rewrite_prompt,
     compare_speaker_fingerprints,
+    get_sidecar_invocation_command,
     get_local_llm_python_bin,
     LocalLlmRewriteProvider,
     MeetingSpeakerMatchStats,
@@ -117,6 +118,17 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertTrue(should_attempt_dictation_batch_fallback("sensevoice", [], 0.08, 1000))
         self.assertFalse(should_attempt_dictation_batch_fallback("sensevoice", [], 0.05, 16000))
         self.assertFalse(should_attempt_dictation_batch_fallback("sensevoice", ["hello"], 0.5, 16000))
+
+    def test_sidecar_invocation_uses_script_path_under_python(self) -> None:
+        with patch.object(sys, "executable", "/opt/homebrew/bin/python3"):
+            command = get_sidecar_invocation_command()
+        self.assertEqual(command[0], "/opt/homebrew/bin/python3")
+        self.assertTrue(command[1].endswith("sidecar.py"))
+
+    def test_sidecar_invocation_uses_single_binary_when_frozen(self) -> None:
+        with patch.object(sys, "executable", "/Applications/BiCaption.app/Contents/Resources/sidecar/sidecar"):
+            command = get_sidecar_invocation_command()
+        self.assertEqual(command, ["/Applications/BiCaption.app/Contents/Resources/sidecar/sidecar"])
 
     def test_dictation_state_event_includes_state(self) -> None:
         event = build_dictation_state_event("recording", "Dictation session started")

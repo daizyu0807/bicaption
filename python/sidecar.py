@@ -838,6 +838,13 @@ def get_local_llm_python_bin() -> str:
     return sys.executable
 
 
+def get_sidecar_invocation_command() -> list[str]:
+    executable_name = os.path.basename(sys.executable).lower()
+    if executable_name.startswith("python"):
+        return [sys.executable, os.path.abspath(__file__)]
+    return [sys.executable]
+
+
 class DictationRewriteProvider:
     backend = "disabled"
 
@@ -1131,8 +1138,9 @@ class MlxWhisperBatchTranscriber:
         if cls._probe_result is not None:
             return cls._probe_result
         try:
+            command = [*get_sidecar_invocation_command(), "--mlx-whisper-probe"]
             result = subprocess.run(
-                [sys.executable, "--mlx-whisper-probe"],
+                command,
                 capture_output=True,
                 text=True,
                 timeout=8,
@@ -1167,7 +1175,7 @@ class MlxWhisperBatchTranscriber:
                 wav_file.setsampwidth(2)
                 wav_file.setframerate(SAMPLE_RATE)
                 wav_file.writeframes(pcm16.tobytes())
-            command = [sys.executable, "--mlx-whisper-transcribe", "--audio-path", temp_path]
+            command = [*get_sidecar_invocation_command(), "--mlx-whisper-transcribe", "--audio-path", temp_path]
             if self._source_lang:
                 command.extend(["--source-lang", self._source_lang])
             result = subprocess.run(
