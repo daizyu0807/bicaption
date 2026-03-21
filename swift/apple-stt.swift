@@ -112,9 +112,6 @@ class SpeechEngine {
 
         let req = SFSpeechAudioBufferRecognitionRequest()
         req.shouldReportPartialResults = true
-        if recognizer.supportsOnDeviceRecognition {
-            req.requiresOnDeviceRecognition = true
-        }
         if #available(macOS 13, *) {
             req.addsPunctuation = false
         }
