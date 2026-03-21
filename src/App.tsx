@@ -509,6 +509,9 @@ const ASR_MODEL_OPTIONS = [
   { key: 'moonshine', label: 'Moonshine', note: '句段完成時輸出 / 實驗性' },
 ] as const;
 
+const SUBTITLE_ASR_MODEL_OPTIONS = ASR_MODEL_OPTIONS.filter((option) =>
+  option.key === 'apple-stt' || option.key === 'sensevoice');
+
 function getAsrOptionsForMode(mode: SessionMode) {
   return ASR_MODEL_OPTIONS.map((option) => {
     const disabled = isAsrModelUnavailableInMode(option.key, mode);
@@ -678,7 +681,10 @@ function SettingsView({
     ...entry,
     ready: isModelReady(localModelStatus, entry.key),
   }));
-  const subtitleAsrOptions = getAsrOptionsForMode('subtitle');
+  const subtitleAsrOptions = SUBTITLE_ASR_MODEL_OPTIONS.map((option) => ({
+    ...option,
+    disabled: false,
+  }));
   const dictationAsrOptions = getAsrOptionsForMode('dictation');
   const meetingAsrOptions = getAsrOptionsForMode('meeting');
   const meetingTurns = buildMeetingTurns(meetingViewState.entries);
@@ -760,6 +766,19 @@ function SettingsView({
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (activeSettingsTab !== 'subtitle') {
+      return;
+    }
+    if (draft.sttModel === 'apple-stt' || draft.sttModel === 'sensevoice') {
+      return;
+    }
+    setDraft((current) => ({
+      ...current,
+      sttModel: 'sensevoice',
+    }));
+  }, [activeSettingsTab, draft.sttModel]);
 
   function toggleHotkeyModifier(modifier: string, checked: boolean) {
     const modifiers = checked
@@ -1208,15 +1227,6 @@ function SettingsView({
                   value={draft.sttModel}
                   onChange={(event) => {
                     const nextModel = event.target.value;
-                    if (nextModel === 'moonshine') {
-                      setDraft({
-                        ...draft,
-                        sttModel: 'moonshine',
-                        sourceLang: 'en',
-                        targetLang: isTranslationEnabled(draft) ? getDefaultSubtitleTargetLang('en') : draft.targetLang,
-                      });
-                      return;
-                    }
                     setDraft({ ...draft, sttModel: nextModel });
                   }}
                 >
@@ -1225,9 +1235,6 @@ function SettingsView({
                   ))}
                 </select>
               </label>
-              {draft.sttModel === 'moonshine' && (
-                <p className="model-hint">目前 Moonshine 先固定走英文串流辨識。切換到 Moonshine 時會自動把來源語言設成 English。</p>
-              )}
               {draft.sttModel === 'apple-stt' && (
                 <>
                   <label>
@@ -1236,9 +1243,6 @@ function SettingsView({
                   </label>
                   <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
                 </>
-              )}
-              {draft.sttModel === 'whisper-mlx' && (
-                <p className="model-hint">MLX Whisper 目前只完成語音輸入路徑；在雙語字幕這個情境尚未提供可用輸出。</p>
               )}
               <div className="settings-subgroup settings-subgroup-compact save-settings-stack">
                 <label className="toggle-row">
