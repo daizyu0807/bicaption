@@ -502,6 +502,13 @@ const MODEL_LIBRARY = [
   },
 ] as const;
 
+const ASR_MODEL_OPTIONS = [
+  { key: 'whisper-mlx', label: 'MLX Whisper', note: '非即時，停止後轉錄' },
+  { key: 'apple-stt', label: 'SFSpeechRecognizer', note: '即時' },
+  { key: 'sensevoice', label: 'SenseVoice', note: '即時' },
+  { key: 'moonshine', label: 'Moonshine', note: '即時 / 實驗性' },
+] as const;
+
 function isModelReady(status: ModelStatus | null, key: (typeof MODEL_LIBRARY)[number]['key']) {
   switch (key) {
     case 'moonshine':
@@ -528,8 +535,9 @@ function getDictationOutputActionLabel(action: DictationOutputAction) {
   }
 }
 
-function isStreamingModelReady(status: ModelStatus | null, modelKey: string) {
+function isSessionModelReady(status: ModelStatus | null, modelKey: string) {
   const modelReadyMap: Record<string, boolean> = {
+    'whisper-mlx': status?.mlxWhisper ?? false,
     moonshine: true,
     sensevoice: status?.sensevoice ?? false,
     'apple-stt': true,
@@ -642,8 +650,8 @@ function SettingsView({
   const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
   const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
   const localLlmEnabled = draft.dictationRewriteMode === 'rules-and-local-llm';
-  const modelsReady = isStreamingModelReady(localModelStatus, draft.sttModel);
-  const meetingModelsReady = isStreamingModelReady(localModelStatus, draft.meetingSttModel);
+  const modelsReady = isSessionModelReady(localModelStatus, draft.sttModel);
+  const meetingModelsReady = isSessionModelReady(localModelStatus, draft.meetingSttModel);
   const isDownloading = downloadProgress !== null;
   const meetingLocalSpeakerReady = Boolean(draft.meetingLocalSpeakerFingerprint && draft.meetingLocalSpeakerProfileId);
   const subtitleModelEntries = MODEL_LIBRARY.map((entry) => ({
@@ -1026,9 +1034,9 @@ function SettingsView({
                     value={draft.dictationSttModel}
                     onChange={(event) => setDraft({ ...draft, dictationSttModel: event.target.value })}
                   >
-                    <option value="whisper-mlx">MLX Whisper</option>
-                    <option value="apple-stt">SFSpeechRecognizer</option>
-                    <option value="sensevoice">SenseVoice</option>
+                    {ASR_MODEL_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>{option.label}（{option.note}）</option>
+                    ))}
                   </select>
                 </label>
                 <label>
@@ -1189,9 +1197,9 @@ function SettingsView({
                     setDraft({ ...draft, sttModel: nextModel });
                   }}
                 >
-                  <option value="moonshine">Moonshine（實驗性）</option>
-                  <option value="apple-stt">SFSpeechRecognizer</option>
-                  <option value="sensevoice">SenseVoice</option>
+                  {ASR_MODEL_OPTIONS.map((option) => (
+                    <option key={option.key} value={option.key}>{option.label}（{option.note}）</option>
+                  ))}
                 </select>
               </label>
               {draft.sttModel === 'moonshine' && (
@@ -1205,6 +1213,9 @@ function SettingsView({
                   </label>
                   <p className="model-hint">Apple STT 不支援多語自動判斷。</p>
                 </>
+              )}
+              {draft.sttModel === 'whisper-mlx' && (
+                <p className="model-hint">MLX Whisper 在這個情境下也可選，但目前仍是停止後才整段轉錄，不是逐字即時出字。</p>
               )}
               <div className="settings-subgroup settings-subgroup-compact save-settings-stack">
                 <label className="toggle-row">
@@ -1537,9 +1548,9 @@ function SettingsView({
                       value={draft.meetingSttModel}
                       onChange={(event) => setDraft({ ...draft, meetingSttModel: event.target.value })}
                     >
-                      <option value="moonshine">Moonshine</option>
-                      <option value="sensevoice">SenseVoice</option>
-                      <option value="apple-stt">SFSpeechRecognizer</option>
+                      {ASR_MODEL_OPTIONS.map((option) => (
+                        <option key={option.key} value={option.key}>{option.label}（{option.note}）</option>
+                      ))}
                     </select>
                   </label>
                   <label>
