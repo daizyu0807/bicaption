@@ -2121,6 +2121,7 @@ class AppleSttTranscriber:
         # Drain results from stdout reader
         results: list[TranscriptChunk] = []
         latest_partial_text = ""
+        is_dictation_mode = _emit_context["mode"] == "dictation"
         while True:
             try:
                 event = self._results.get_nowait()
@@ -2128,11 +2129,29 @@ class AppleSttTranscriber:
                 break
             event_type = event.get("type", "")
             if event_type == "final":
+                final_text = normalize_text(event.get("text", ""))
+                if is_dictation_mode and final_text and len(final_text.replace(" ", "")) >= 2:
+                    if not self._is_duplicate(final_text):
+                        self._segment_counter += 1
+                        seg_id = f"apple-seg-{self._segment_counter}"
+                        results.append(TranscriptChunk(
+                            mode=_emit_context["mode"],
+                            session_id=_emit_context["sessionId"],
+                            segment_id=seg_id,
+                            source_text=final_text,
+                            started_at_ms=base_time_ms,
+                            ended_at_ms=now_ms(),
+                            confidence=float(event.get("confidence", 0.0)),
+                            detected_lang=self.detected_lang,
+                        ))
+                        self._record_promoted(final_text)
+                    self._last_partial_text = ""
+                    self._last_partial_change_ms = 0
                 # Binary restarted its recognition task (55s limit).
                 # Don't use the binary's final text directly — it's the full
                 # cumulative text which we've already promoted in pieces.
                 # Instead, force-promote any remaining unstable partial delta.
-                if self._last_partial_text:
+                elif self._last_partial_text:
                     offset = self._find_promoted_offset(self._last_partial_text, for_display=False)
                     delta = self._clean_leading_fragment(self._last_partial_text[offset:].lstrip())
                     if delta and len(delta.replace(" ", "")) >= 2 and not self._is_duplicate(delta):
@@ -2179,6 +2198,25 @@ class AppleSttTranscriber:
             if latest_partial_text != self._last_partial_text:
                 self._last_partial_text = latest_partial_text
                 self._last_partial_change_ms = now_ms()
+            if is_dictation_mode and self._proc is None:
+                final_text = self._last_partial_text
+                if final_text and len(final_text.replace(" ", "")) >= 2 and not self._is_duplicate(final_text):
+                    self._segment_counter += 1
+                    seg_id = f"apple-seg-{self._segment_counter}"
+                    results.append(TranscriptChunk(
+                        mode=_emit_context["mode"],
+                        session_id=_emit_context["sessionId"],
+                        segment_id=seg_id,
+                        source_text=final_text,
+                        started_at_ms=base_time_ms,
+                        ended_at_ms=now_ms(),
+                        confidence=0.0,
+                        detected_lang=self.detected_lang,
+                    ))
+                    self._record_promoted(final_text)
+                self._last_partial_text = ""
+                self._last_partial_change_ms = 0
+                return results
             # Overlay uses _display_offset (not _promoted_len) so that promote
             # cycles don't cause the visible text to vanish.  Display offset
             # only resets on 55s task restart.
@@ -2205,6 +2243,8 @@ class AppleSttTranscriber:
 
         # Promote stable partial → final for translation.
         if (
+            not is_dictation_mode
+            and
             self._last_partial_text
             and self._last_partial_change_ms > 0
         ):
