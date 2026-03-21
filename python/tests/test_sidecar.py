@@ -61,7 +61,6 @@ from sidecar import (
     build_dictation_final_event,
     build_dictation_state_event,
     append_dictation_fragment,
-    cleanup_dictation_fragments,
     looks_like_garbage_text,
     make_segment_id,
     normalize_mlx_whisper_lang,
@@ -207,18 +206,6 @@ class TranslationProviderTest(unittest.TestCase):
             "And two people are involved the waiter",
             "I don't wanna say anymore don't say anymore let's just",
         ])
-
-    def test_cleanup_dictation_fragments_merges_isolated_first_word(self) -> None:
-        self.assertEqual(
-            cleanup_dictation_fragments(["Hello", "English learn to English my name is Marco"]),
-            ["Hello English learn to English my name is Marco"],
-        )
-
-    def test_cleanup_dictation_fragments_merges_isolated_last_word(self) -> None:
-        self.assertEqual(
-            cleanup_dictation_fragments(["anymore let's just listen to this dialogue", "your"]),
-            ["anymore let's just listen to this dialogue your"],
-        )
 
     def test_dictation_final_event_converts_to_traditional_chinese(self) -> None:
         converter = types.SimpleNamespace(convert=lambda text: text.replace("汉", "漢").replace("语", "語"))
