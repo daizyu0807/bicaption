@@ -97,6 +97,13 @@ def clamp(value: float, minimum: float, maximum: float) -> float:
 
 def build_child_process_env() -> dict[str, str]:
     env = os.environ.copy()
+    
+    # Ensure all HuggingFace and related environment variables are passed
+    # This is critical for MLX to find models downloaded by the main process
+    for key, value in os.environ.items():
+        if key.startswith("HF_") or key.startswith("TRANSFORMERS_") or key.startswith("BICAPTION_"):
+            env[key] = value
+
     path_entries: list[str] = []
     current_path = env.get("PATH", "")
     if current_path:
@@ -368,11 +375,19 @@ def should_attempt_dictation_batch_fallback(
     max_input_level: float,
     buffered_sample_count: int,
 ) -> bool:
+    trace_debug(
+        f"should_attempt_batch_fallback: model={stt_model} parts={len(dictation_parts)} "
+        f"max_level={max_input_level:.4f} samples={buffered_sample_count}"
+    )
     if dictation_parts or buffered_sample_count <= 0:
         return False
-    if stt_model == "whisper-mlx":
-        return buffered_sample_count >= MIN_SPEECH_SAMPLES
-    return max_input_level >= 0.08
+    
+    # For MLX Whisper, we always attempt if there is audio, 
+    # as it's our primary dictation engine and might have hallucinations even on quiet audio.
+    if stt_model.lower() == "whisper-mlx" or "mlx" in stt_model.lower():
+        return buffered_sample_count >= (SAMPLE_RATE * 0.3) # At least 0.3s
+        
+    return max_input_level >= 0.05 # Lowered from 0.08
 
 
 def build_dictation_state_event(state: str, detail: str | None = None) -> dict[str, Any]:
@@ -1115,7 +1130,7 @@ class MeetingChunk:
 
 
 class MlxWhisperBatchTranscriber:
-    """Batch-only dictation transcriber backed by MLX Whisper."""
+    """Batch-only dictation transcriber backed by MLX Whisper using subprocess isolation."""
 
     _probe_result: bool | None = None
 
@@ -1148,25 +1163,20 @@ class MlxWhisperBatchTranscriber:
                 env=build_child_process_env(),
             )
             cls._probe_result = result.returncode == 0 and "READY" in result.stdout
-            trace_debug(
-                "mlx whisper probe "
-                f"returncode={result.returncode} "
-                f"stdout={result.stdout.strip()!r} "
-                f"stderr={result.stderr.strip()[:240]!r}"
-            )
         except Exception as exc:
             cls._probe_result = False
             trace_debug(f"mlx whisper probe exception={exc}")
         return cls._probe_result
 
     def transcribe_buffer(self, audio: np.ndarray, base_time_ms: int) -> list[TranscriptChunk]:
-        if audio.size < MIN_SPEECH_SAMPLES:
+        if audio.size < (SAMPLE_RATE * 0.3):
             return []
         if not self._probe_runtime_ready():
-            raise RuntimeError("dependency missing: MLX runtime probe failed")
+            return []
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
             temp_path = handle.name
+            
         try:
             pcm16 = np.clip(audio, -1.0, 1.0)
             pcm16 = (pcm16 * 32767).astype(np.int16)
@@ -1175,9 +1185,11 @@ class MlxWhisperBatchTranscriber:
                 wav_file.setsampwidth(2)
                 wav_file.setframerate(SAMPLE_RATE)
                 wav_file.writeframes(pcm16.tobytes())
+                
             command = [*get_sidecar_invocation_command(), "--mlx-whisper-transcribe", "--audio-path", temp_path]
-            if self._source_lang:
+            if self._source_lang and self._source_lang != "auto":
                 command.extend(["--source-lang", self._source_lang])
+                
             result = subprocess.run(
                 command,
                 capture_output=True,
@@ -1186,19 +1198,32 @@ class MlxWhisperBatchTranscriber:
                 check=False,
                 env=build_child_process_env(),
             )
+            
             if result.returncode != 0:
-                stderr = result.stderr.strip() or result.stdout.strip()
-                raise RuntimeError(f"MLX worker failed: {stderr or f'exit {result.returncode}'}")
-            payload = json.loads(result.stdout)
+                trace_debug(f"MLX worker failed: {result.stderr.strip() or result.stdout.strip()}")
+                return []
+            
+            # Use explicit markers for robust JSON extraction
+            stdout_content = result.stdout
+            match = re.search(r"MLX_JSON_START\n(.*?)\nMLX_JSON_END", stdout_content, re.DOTALL)
+            if not match:
+                return []
+
+            try:
+                payload = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                return []
+
             text = normalize_text(str(payload.get("text", "")))
             detected_lang = normalize_text(str(payload.get("language", self._source_lang or "")))
+            
         finally:
             try:
                 os.unlink(temp_path)
             except OSError:
                 pass
 
-        if not text or len(text.replace(" ", "")) < 2:
+        if not text:
             return []
 
         self._segment_counter += 1
@@ -2529,6 +2554,7 @@ class SidecarApp:
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.5)
         self.thread = None
+
         if self.config is not None and self.config.mode == "meeting":
             self._flush_meeting_transcribers()
         elif self.config is not None and self.config.mode != "dictation" and self.transcriber is not None:
@@ -2538,74 +2564,49 @@ class SidecarApp:
                     for chunk in flush(now_ms()):
                         self._emit_final_chunk(chunk)
                 except Exception as error:
-                    trace_debug(f"stream flush failed session={self.config.session_id} error={error}")
+                    trace_debug(f"stream flush failed error={error}")
+
+        # Dictation mode special handling
         if self.config is not None and self.config.mode == "dictation" and self.transcriber is not None:
             if isinstance(self.transcriber, AppleSttTranscriber):
                 self.transcriber.stop()
+            
+            # Flush streaming transcriber
             flush = getattr(self.transcriber, "flush", None)
             if callable(flush):
-                flush_base_ms = self.dictation_last_update_ms or self.dictation_started_at_ms or now_ms()
                 try:
-                    flushed_chunks = flush(flush_base_ms)
-                    for chunk in flushed_chunks:
+                    for chunk in flush(self.dictation_last_update_ms or now_ms()):
                         self._emit_final_chunk(chunk)
-                    trace_debug(
-                        f"dictation flush emitted chunks={len(flushed_chunks)} session={self.config.session_id} "
-                        f"max_input_level={self.dictation_max_input_level:.4f}"
-                    )
                 except Exception as error:
-                    trace_debug(f"dictation flush failed session={self.config.session_id} error={error}")
-            buffered_audio = None
-            if self.dictation_audio_buffer:
-                buffered_audio = np.concatenate(self.dictation_audio_buffer).astype(np.float32)
-            should_attempt_batch = should_attempt_dictation_batch_fallback(
-                self.config.stt_model,
-                self.dictation_parts,
-                self.dictation_max_input_level,
-                0 if buffered_audio is None else buffered_audio.size,
-            )
-            if should_attempt_batch:
-                transcribe_buffer = getattr(self.transcriber, "transcribe_buffer", None)
-                if callable(transcribe_buffer) and buffered_audio is not None:
-                    batch_base_ms = self.dictation_started_at_ms or now_ms()
-                    try:
-                        fallback_chunks = transcribe_buffer(buffered_audio, batch_base_ms)
+                    trace_debug(f"dictation flush failed error={error}")
+
+            # MLX Batch Fallback - Wrap in try/except to prevent breaking other models
+            try:
+                buffered_audio = None
+                if self.dictation_audio_buffer:
+                    buffered_audio = np.concatenate(self.dictation_audio_buffer).astype(np.float32)
+                
+                should_attempt_batch = should_attempt_dictation_batch_fallback(
+                    self.config.stt_model,
+                    self.dictation_parts,
+                    self.dictation_max_input_level,
+                    0 if buffered_audio is None else buffered_audio.size,
+                )
+                
+                if should_attempt_batch:
+                    transcribe_buffer = getattr(self.transcriber, "transcribe_buffer", None)
+                    if callable(transcribe_buffer) and buffered_audio is not None:
+                        emit(build_dictation_state_event("processing", "Running MLX Whisper batch..."))
+                        fallback_chunks = transcribe_buffer(buffered_audio, self.dictation_started_at_ms or now_ms())
                         for chunk in fallback_chunks:
                             self._emit_final_chunk(chunk)
-                        trace_debug(
-                            f"dictation batch fallback emitted chunks={len(fallback_chunks)} session={self.config.session_id} "
-                            f"samples={buffered_audio.size} max_input_level={self.dictation_max_input_level:.4f}"
-                        )
-                    except Exception as error:
-                        trace_debug(f"dictation batch fallback failed session={self.config.session_id} error={error}")
-                        emit({
-                            "type": "error",
-                            "code": "dictation_batch_transcription_failed",
-                            "message": str(error),
-                            "recoverable": True,
-                        })
-        if self.capture is not None:
-            self.capture.stop()
-            self.capture = None
-        if isinstance(self.transcriber, AppleSttTranscriber) or isinstance(self.transcriber, MoonshineTranscriber):
-            self.transcriber.stop()
-        self.transcriber = None
-        self._stop_transcriber(self.meeting_mic_transcriber)
-        self._stop_transcriber(self.meeting_system_transcriber)
-        self.meeting_mic_transcriber = None
-        self.meeting_system_transcriber = None
-        if self.config is not None and self.config.mode == "meeting":
-            trace_debug(f"{summarize_meeting_match_stats(self.meeting_match_stats)} session={self.config.session_id}")
-        if self.active:
-            self.active = False
-            emit({"type": "session_state", "state": "stopped"})
-            trace_debug(f"emitted session_state stopped session={self.config.session_id if self.config else 'none'}")
-        if self.config is not None and self.config.mode == "dictation":
+            except Exception as batch_error:
+                trace_debug(f"MLX batch fallback fatal error: {batch_error}")
+
+            # Finalize event emission
             self.dictation_last_update_ms = max(self.dictation_last_update_ms, now_ms())
             emit(build_dictation_state_event("processing", "Finalizing dictation output"))
-            trace_debug(f"emitted dictation_state processing session={self.config.session_id}")
             emit(build_dictation_state_event("stopped", "Dictation session stopped"))
-            trace_debug(f"emitted dictation_state stopped session={self.config.session_id}")
             emit(
                 build_dictation_final_event(
                     self.config.session_id,
@@ -2624,9 +2625,30 @@ class SidecarApp:
                     local_llm_runner=self.config.dictation_local_llm_runner,
                 )
             )
-            trace_debug(f"emitted dictation_final session={self.config.session_id} parts={len(self.dictation_parts)}")
+
+        # Cleanup capture and state
+        if self.capture is not None:
+            self.capture.stop()
+            self.capture = None
+        
+        # Stop remaining transcribers
+        if self.transcriber is not None:
+            if hasattr(self.transcriber, "stop") and callable(self.transcriber.stop):
+                try: self.transcriber.stop()
+                except: pass
+            self.transcriber = None
+
+        self._stop_transcriber(self.meeting_mic_transcriber)
+        self._stop_transcriber(self.meeting_system_transcriber)
+        self.meeting_mic_transcriber = None
+        self.meeting_system_transcriber = None
+
+        if self.active:
+            self.active = False
+            emit({"type": "session_state", "state": "stopped"})
+        
         emit({"type": "session_stopped_ack"})
-        trace_debug(f"emitted session_stopped_ack session={self.config.session_id if self.config else 'none'}")
+        trace_debug(f"stop_session exit session={self.config.session_id if self.config else 'none'}")
 
     def _should_translate(self, chunk: TranscriptChunk) -> bool:
         if self.translator is None or self.config is None:
@@ -2998,35 +3020,102 @@ def _apply_model_dir(model_dir: str) -> None:
 
 
 def run_mlx_whisper_probe() -> int:
-    import mlx.core as mx  # type: ignore
+    # --- CRITICAL: Path Injection for Frozen Binary ---
+    if getattr(sys, 'frozen', False):
+        internal_path = os.path.join(sys._MEIPASS, "_internal")
+        if internal_path not in sys.path:
+            sys.path.insert(0, internal_path)
+    # --------------------------------------------------
 
-    mx.random.key(0)
-    sys.stdout.write("READY\n")
-    return 0
+    try:
+        import mlx.core as mx  # type: ignore
+        mx.random.key(0)
+        sys.stdout.write("READY\n")
+        sys.stdout.flush()
+        return 0
+    except Exception as e:
+        sys.stderr.write(f"PROBE_FAILED: {str(e)}\n")
+        return 1
 
 
 def run_mlx_whisper_transcribe(audio_path: str, source_lang: str | None) -> int:
-    import mlx_whisper  # type: ignore
+    import re
+    import time
+    import traceback
+    import json
+    
+    # --- CRITICAL: Diagnostic Logging ---
+    def log_diag(msg):
+        try:
+            with open("/tmp/mlx_sidecar_debug.log", "a") as f:
+                f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+        except:
+            pass
+    
+    log_diag(f"Worker started. Audio: {audio_path}")
 
-    kwargs: dict[str, Any] = {"path_or_hf_repo": MLX_WHISPER_MODEL}
-    normalized_source = normalize_mlx_whisper_lang(source_lang or "auto")
-    if normalized_source:
-        kwargs["language"] = normalized_source
-    result = mlx_whisper.transcribe(audio_path, **kwargs)
-    sys.stdout.write(
-        json.dumps(
-            {
-                "text": str(result.get("text", "")),
-                "language": str(result.get("language", normalized_source or "")),
-            },
-            ensure_ascii=False,
-        )
-    )
-    return 0
+    if getattr(sys, 'frozen', False):
+        # In PyInstaller, _internal is sibling to the executable or in _MEIPASS
+        internal_path = os.path.join(sys._MEIPASS, "_internal")
+        if internal_path not in sys.path:
+            sys.path.insert(0, internal_path)
+            log_diag(f"Injected sys.path: {internal_path}")
+
+    try:
+        import mlx_whisper # type: ignore
+        import mlx.core as mx # type: ignore
+        log_diag(f"MLX Loaded. Version: {getattr(mx, '__version__', 'unknown')}")
+        
+        normalized_source = normalize_mlx_whisper_lang(source_lang or "auto")
+        kwargs: dict[str, Any] = {}
+        if normalized_source:
+            kwargs["language"] = normalized_source
+
+        # Perform transcription
+        result = mlx_whisper.transcribe(audio_path, path_or_hf_repo=MLX_WHISPER_MODEL, **kwargs)
+        text = str(result.get("text", ""))
+        log_diag(f"Transcription success. Text: {text[:50]}...")
+
+        output_obj = {
+            "text": text,
+            "language": str(result.get("language", normalized_source or "")),
+        }
+        
+        # Write to stdout with explicit markers to help the parent find it
+        sys.stdout.write("\nMLX_JSON_START\n")
+        sys.stdout.write(json.dumps(output_obj, ensure_ascii=False))
+        sys.stdout.write("\nMLX_JSON_END\n")
+        sys.stdout.flush()
+        return 0
+
+    except Exception as e:
+        err_msg = f"ERROR: {str(e)}\n{traceback.format_exc()}"
+        log_diag(err_msg)
+        sys.stderr.write(err_msg)
+        return 1
 
 
 def cli() -> int:
     multiprocessing.freeze_support()
+    
+    # --- HOT-PATH INTERCEPTION for MLX (Crucial for Frozen Binary performance) ---
+    if "--mlx-whisper-probe" in sys.argv:
+        return run_mlx_whisper_probe()
+    
+    if "--mlx-whisper-transcribe" in sys.argv:
+        audio_path = ""
+        source_lang = ""
+        for i, arg in enumerate(sys.argv):
+            if arg == "--audio-path" and i + 1 < len(sys.argv):
+                audio_path = sys.argv[i + 1]
+            if arg == "--source-lang" and i + 1 < len(sys.argv):
+                source_lang = sys.argv[i + 1]
+        if not audio_path:
+            sys.stderr.write("ERROR: --audio-path missing in MLX hot-path\n")
+            return 1
+        return run_mlx_whisper_transcribe(audio_path, source_lang)
+    # -----------------------------------------------------------------------------
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--list-devices", action="store_true")
     parser.add_argument("--enroll-speaker", action="store_true")
@@ -3052,14 +3141,6 @@ def cli() -> int:
         result = enroll_local_speaker(args.device_id, args.duration_sec)
         sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
         return 0
-
-    if args.mlx_whisper_probe:
-        return run_mlx_whisper_probe()
-
-    if args.mlx_whisper_transcribe:
-        if not args.audio_path:
-            raise RuntimeError("--audio-path is required for --mlx-whisper-transcribe")
-        return run_mlx_whisper_transcribe(args.audio_path, args.source_lang)
 
     return SidecarApp().run()
 
