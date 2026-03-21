@@ -420,6 +420,22 @@ def append_dictation_fragment(transcript_parts: list[str], fragment: str) -> lis
     return transcript_parts
 
 
+def cleanup_dictation_fragments(transcript_parts: list[str]) -> list[str]:
+    cleaned = [normalize_text(part) for part in transcript_parts if normalize_text(part)]
+    if len(cleaned) < 2:
+        return cleaned
+
+    if count_words(cleaned[0]) <= 1:
+        cleaned[1] = normalize_text(f"{cleaned[0]} {cleaned[1]}")
+        cleaned.pop(0)
+
+    if len(cleaned) >= 2 and count_words(cleaned[-1]) <= 1:
+        cleaned[-2] = normalize_text(f"{cleaned[-2]} {cleaned[-1]}")
+        cleaned.pop()
+
+    return cleaned
+
+
 def build_dictation_final_event(
     session_id: str,
     transcript_parts: list[str],
@@ -439,6 +455,7 @@ def build_dictation_final_event(
     normalized_parts: list[str] = []
     for part in transcript_parts:
         append_dictation_fragment(normalized_parts, part)
+    normalized_parts = cleanup_dictation_fragments(normalized_parts)
 
     transcript = normalize_text(" ".join(normalized_parts))
     if convert_s2t and opencc_s2t is not None and transcript:
