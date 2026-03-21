@@ -41,6 +41,9 @@ class SpeechEngine {
     private var taskStartMs = 0
     private var lastPartialText = ""
     private var running = false
+    private var stopping = false
+    private var stopCompletion: (() -> Void)?
+    private var stopFallbackTimer: DispatchSourceTimer?
 
     init(locale: String) {
         let loc = Locale(identifier: locale)
@@ -59,20 +62,18 @@ class SpeechEngine {
 
     func start() {
         running = true
+        stopping = false
         startTask()
     }
 
-    func stop() {
+    func stop(completion: (() -> Void)? = nil) {
         running = false
+        stopping = true
+        stopCompletion = completion
         cancelRestartTimer()
-        if !lastPartialText.isEmpty {
-            emitFinal(lastPartialText, result: nil)
-            lastPartialText = ""
-        }
         request?.endAudio()
         task?.finish()
-        task = nil
-        request = nil
+        scheduleStopFallback()
     }
 
     private var totalSamplesFed = 0
@@ -130,7 +131,9 @@ class SpeechEngine {
 
                 if result.isFinal {
                     self.emitFinal(text, result: result)
-                    if self.running {
+                    if self.stopping {
+                        self.finishStop()
+                    } else if self.running {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                             self.startTask()
                         }
@@ -139,11 +142,15 @@ class SpeechEngine {
                     self.lastPartialText = text
                     emitJSON(["type": "partial", "text": text])
                 }
-            } else if error != nil && self.running {
-                // Only restart on genuine errors, not cancellation
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    guard self.taskGeneration == gen else { return }
-                    self.startTask()
+            } else if error != nil {
+                if self.stopping {
+                    self.finishStop()
+                } else if self.running {
+                    // Only restart on genuine errors, not cancellation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        guard self.taskGeneration == gen else { return }
+                        self.startTask()
+                    }
                 }
             }
         }
@@ -182,6 +189,33 @@ class SpeechEngine {
     private func cancelRestartTimer() {
         restartTimer?.cancel()
         restartTimer = nil
+    }
+
+    private func scheduleStopFallback() {
+        stopFallbackTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 1.2)
+        timer.setEventHandler { [weak self] in
+            guard let self = self, self.stopping else { return }
+            if !self.lastPartialText.isEmpty {
+                self.emitFinal(self.lastPartialText, result: nil)
+                self.lastPartialText = ""
+            }
+            self.finishStop()
+        }
+        timer.resume()
+        stopFallbackTimer = timer
+    }
+
+    private func finishStop() {
+        stopFallbackTimer?.cancel()
+        stopFallbackTimer = nil
+        stopping = false
+        task = nil
+        request = nil
+        let completion = stopCompletion
+        stopCompletion = nil
+        completion?()
     }
 }
 
@@ -282,9 +316,10 @@ func runStdinReader(engine: SpeechEngine) {
         }
 
         DispatchQueue.main.async {
-            engine.stop()
-            emitJSON(["type": "stopped"])
-            exit(0)
+            engine.stop {
+                emitJSON(["type": "stopped"])
+                exit(0)
+            }
         }
     }
 }
