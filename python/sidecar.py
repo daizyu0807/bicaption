@@ -1440,6 +1440,7 @@ class MoonshineTranscriber:
         self._session_base_ms = now_ms()
         self._queued_chunks: list[TranscriptChunk] = []
         self._seen_completed_line_ids: set[int] = set()
+        self._last_partial_by_line_id: dict[int, str] = {}
         self.finalized_ids: set[str] = set()
 
         update_interval = max(0.2, update_interval_ms / 1000.0)
@@ -1473,9 +1474,35 @@ class MoonshineTranscriber:
             if line.line_id in self._seen_completed_line_ids:
                 return
             self._seen_completed_line_ids.add(line.line_id)
+            self._last_partial_by_line_id.pop(int(line.line_id), None)
             chunk = self._line_to_chunk(line)
             if chunk.source_text:
                 self._queued_chunks.append(chunk)
+            return
+
+        if isinstance(event, self._line_updated_type) or isinstance(event, self._line_text_changed_type):
+            line = getattr(event, "line", None)
+            if line is None:
+                return
+            line_id = int(line.line_id)
+            if line_id in self._seen_completed_line_ids:
+                return
+            text = normalize_text(str(line.text))
+            if not text:
+                return
+            if self._last_partial_by_line_id.get(line_id) == text:
+                return
+            self._last_partial_by_line_id[line_id] = text
+            if _emit_context["mode"] == "subtitle":
+                emit({
+                    "type": "partial_caption",
+                    "mode": _emit_context["mode"],
+                    "sessionId": _emit_context["sessionId"],
+                    "segmentId": f"moonshine-{line_id}",
+                    "sourceText": text,
+                    "startedAtMs": self._session_base_ms + int(float(line.start_time) * 1000),
+                    "updatedAtMs": now_ms(),
+                })
 
     def _drain_chunks(self) -> list[TranscriptChunk]:
         if not self._queued_chunks:

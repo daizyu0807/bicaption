@@ -503,11 +503,29 @@ const MODEL_LIBRARY = [
 ] as const;
 
 const ASR_MODEL_OPTIONS = [
-  { key: 'whisper-mlx', label: 'MLX Whisper', note: '非即時，停止後轉錄' },
-  { key: 'apple-stt', label: 'SFSpeechRecognizer', note: '即時' },
-  { key: 'sensevoice', label: 'SenseVoice', note: '即時' },
-  { key: 'moonshine', label: 'Moonshine', note: '即時 / 實驗性' },
+  { key: 'whisper-mlx', label: 'MLX Whisper', note: '整段結束後輸出' },
+  { key: 'apple-stt', label: 'SFSpeechRecognizer', note: '逐段即時更新' },
+  { key: 'sensevoice', label: 'SenseVoice', note: '逐段輸出' },
+  { key: 'moonshine', label: 'Moonshine', note: '句段完成時輸出 / 實驗性' },
 ] as const;
+
+function getAsrOptionsForMode(mode: SessionMode) {
+  return ASR_MODEL_OPTIONS.map((option) => {
+    const disabled = isAsrModelUnavailableInMode(option.key, mode);
+    const note = disabled
+      ? `${option.note} / 目前此情境不可用`
+      : option.note;
+    return {
+      ...option,
+      disabled,
+      note,
+    };
+  });
+}
+
+function isAsrModelUnavailableInMode(modelKey: string, mode: SessionMode) {
+  return modelKey === 'whisper-mlx' && mode !== 'dictation';
+}
 
 function isModelReady(status: ModelStatus | null, key: (typeof MODEL_LIBRARY)[number]['key']) {
   switch (key) {
@@ -650,14 +668,19 @@ function SettingsView({
   const hotkeyBinding: DictationHotkeyBinding = draft.dictationHotkey;
   const hotkeyValidation = validateDictationHotkey(hotkeyBinding);
   const localLlmEnabled = draft.dictationRewriteMode === 'rules-and-local-llm';
-  const modelsReady = isSessionModelReady(localModelStatus, draft.sttModel);
-  const meetingModelsReady = isSessionModelReady(localModelStatus, draft.meetingSttModel);
+  const modelsReady = !isAsrModelUnavailableInMode(draft.sttModel, 'subtitle')
+    && isSessionModelReady(localModelStatus, draft.sttModel);
+  const meetingModelsReady = !isAsrModelUnavailableInMode(draft.meetingSttModel, 'meeting')
+    && isSessionModelReady(localModelStatus, draft.meetingSttModel);
   const isDownloading = downloadProgress !== null;
   const meetingLocalSpeakerReady = Boolean(draft.meetingLocalSpeakerFingerprint && draft.meetingLocalSpeakerProfileId);
   const subtitleModelEntries = MODEL_LIBRARY.map((entry) => ({
     ...entry,
     ready: isModelReady(localModelStatus, entry.key),
   }));
+  const subtitleAsrOptions = getAsrOptionsForMode('subtitle');
+  const dictationAsrOptions = getAsrOptionsForMode('dictation');
+  const meetingAsrOptions = getAsrOptionsForMode('meeting');
   const meetingTurns = buildMeetingTurns(meetingViewState.entries);
   const meetingEnrollmentQualityLabel = meetingEnrollmentResult?.qualityScore == null
     ? null
@@ -1034,8 +1057,8 @@ function SettingsView({
                     value={draft.dictationSttModel}
                     onChange={(event) => setDraft({ ...draft, dictationSttModel: event.target.value })}
                   >
-                    {ASR_MODEL_OPTIONS.map((option) => (
-                      <option key={option.key} value={option.key}>{option.label}（{option.note}）</option>
+                    {dictationAsrOptions.map((option) => (
+                      <option key={option.key} value={option.key} disabled={option.disabled}>{option.label}（{option.note}）</option>
                     ))}
                   </select>
                 </label>
@@ -1197,8 +1220,8 @@ function SettingsView({
                     setDraft({ ...draft, sttModel: nextModel });
                   }}
                 >
-                  {ASR_MODEL_OPTIONS.map((option) => (
-                    <option key={option.key} value={option.key}>{option.label}（{option.note}）</option>
+                  {subtitleAsrOptions.map((option) => (
+                    <option key={option.key} value={option.key} disabled={option.disabled}>{option.label}（{option.note}）</option>
                   ))}
                 </select>
               </label>
@@ -1215,7 +1238,7 @@ function SettingsView({
                 </>
               )}
               {draft.sttModel === 'whisper-mlx' && (
-                <p className="model-hint">MLX Whisper 在這個情境下也可選，但目前仍是停止後才整段轉錄，不是逐字即時出字。</p>
+                <p className="model-hint">MLX Whisper 目前只完成語音輸入路徑；在雙語字幕這個情境尚未提供可用輸出。</p>
               )}
               <div className="settings-subgroup settings-subgroup-compact save-settings-stack">
                 <label className="toggle-row">
@@ -1548,8 +1571,8 @@ function SettingsView({
                       value={draft.meetingSttModel}
                       onChange={(event) => setDraft({ ...draft, meetingSttModel: event.target.value })}
                     >
-                      {ASR_MODEL_OPTIONS.map((option) => (
-                        <option key={option.key} value={option.key}>{option.label}（{option.note}）</option>
+                      {meetingAsrOptions.map((option) => (
+                        <option key={option.key} value={option.key} disabled={option.disabled}>{option.label}（{option.note}）</option>
                       ))}
                     </select>
                   </label>
