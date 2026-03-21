@@ -60,6 +60,7 @@ from sidecar import (
     FallbackTranslator,
     build_dictation_final_event,
     build_dictation_state_event,
+    append_dictation_fragment,
     looks_like_garbage_text,
     make_segment_id,
     normalize_mlx_whisper_lang,
@@ -188,8 +189,23 @@ class TranslationProviderTest(unittest.TestCase):
         self.assertEqual(event["finalText"], "hello world")
         self.assertEqual(event["rewriteBackend"], "disabled")
         self.assertFalse(event["rewriteApplied"])
-        self.assertEqual(event["chunkCount"], 2)
+        self.assertEqual(event["chunkCount"], 1)
         self.assertEqual(event["latencyMs"], 30)
+
+    def test_append_dictation_fragment_merges_short_tail_into_previous_part(self) -> None:
+        parts: list[str] = []
+        append_dictation_fragment(parts, "I'm a Mira and Amira and I are here today with a great")
+        append_dictation_fragment(parts, "great lesson for you")
+        self.assertEqual(parts, ["I'm a Mira and Amira and I are here today with a great great lesson for you"])
+
+    def test_append_dictation_fragment_keeps_distinct_long_fragments_separate(self) -> None:
+        parts: list[str] = []
+        append_dictation_fragment(parts, "And two people are involved the waiter")
+        append_dictation_fragment(parts, "I don't wanna say anymore don't say anymore let's just")
+        self.assertEqual(parts, [
+            "And two people are involved the waiter",
+            "I don't wanna say anymore don't say anymore let's just",
+        ])
 
     def test_dictation_final_event_converts_to_traditional_chinese(self) -> None:
         converter = types.SimpleNamespace(convert=lambda text: text.replace("汉", "漢").replace("语", "語"))

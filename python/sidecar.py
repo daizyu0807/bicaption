@@ -385,6 +385,41 @@ def build_dictation_state_event(state: str, detail: str | None = None) -> dict[s
     return event
 
 
+def should_merge_dictation_fragment(previous: str, current: str) -> bool:
+    previous_words = count_words(previous)
+    current_words = count_words(current)
+    if previous_words <= 0 or current_words <= 0:
+        return False
+
+    previous_ends_sentence = previous.rstrip().endswith((".", "!", "?", "。", "！", "？"))
+    current_starts_lower = current[:1].islower()
+
+    if current_words <= 4:
+        return True
+    if previous_words <= 2:
+        return True
+    if current_starts_lower and not previous_ends_sentence:
+        return True
+    if previous_words <= 6 and current_words <= 6 and not previous_ends_sentence:
+        return True
+    return False
+
+
+def append_dictation_fragment(transcript_parts: list[str], fragment: str) -> list[str]:
+    normalized = normalize_text(fragment)
+    if not normalized:
+        return transcript_parts
+    if not transcript_parts:
+        transcript_parts.append(normalized)
+        return transcript_parts
+
+    if should_merge_dictation_fragment(transcript_parts[-1], normalized):
+        transcript_parts[-1] = normalize_text(f"{transcript_parts[-1]} {normalized}")
+    else:
+        transcript_parts.append(normalized)
+    return transcript_parts
+
+
 def build_dictation_final_event(
     session_id: str,
     transcript_parts: list[str],
@@ -401,7 +436,11 @@ def build_dictation_final_event(
     local_llm_model: str = "",
     local_llm_runner: str = "",
 ) -> dict[str, Any]:
-    transcript = normalize_text(" ".join(transcript_parts))
+    normalized_parts: list[str] = []
+    for part in transcript_parts:
+        append_dictation_fragment(normalized_parts, part)
+
+    transcript = normalize_text(" ".join(normalized_parts))
     if convert_s2t and opencc_s2t is not None and transcript:
         transcript = opencc_s2t.convert(transcript)
     dictionary_entries = parse_dictation_dictionary(dictionary_text) if dictionary_enabled else []
@@ -456,7 +495,7 @@ def build_dictation_final_event(
         "rewriteBackend": rewrite_backend,
         "rewriteApplied": rewrite_applied,
         **({"fallbackReason": fallback_reason} if fallback_reason else {}),
-        "chunkCount": len(transcript_parts),
+        "chunkCount": len(normalized_parts),
         "startedAtMs": started_at_ms,
         "endedAtMs": ended_at_ms,
         "latencyMs": max(0, ended_at_ms - started_at_ms),
@@ -2707,7 +2746,7 @@ class SidecarApp:
         if self.config is not None and self.config.mode == "dictation":
             normalized = normalize_text(source_text)
             if normalized:
-                self.dictation_parts.append(normalized)
+                append_dictation_fragment(self.dictation_parts, normalized)
                 self.dictation_last_update_ms = now_ms()
                 emit(build_dictation_state_event("capturing", f"Buffered {chunk.segment_id}"))
             return
