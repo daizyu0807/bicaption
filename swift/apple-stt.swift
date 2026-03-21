@@ -42,8 +42,10 @@ class SpeechEngine {
     private var lastPartialText = ""
     private var running = false
     private var stopping = false
+    private var restarting = false
     private var stopCompletion: (() -> Void)?
     private var stopFallbackTimer: DispatchSourceTimer?
+    private var restartFallbackTimer: DispatchSourceTimer?
 
     init(locale: String) {
         let loc = Locale(identifier: locale)
@@ -114,7 +116,7 @@ class SpeechEngine {
             req.requiresOnDeviceRecognition = true
         }
         if #available(macOS 13, *) {
-            req.addsPunctuation = true
+            req.addsPunctuation = false
         }
         req.taskHint = .dictation
 
@@ -133,6 +135,8 @@ class SpeechEngine {
                     self.emitFinal(text, result: result)
                     if self.stopping {
                         self.finishStop()
+                    } else if self.restarting {
+                        self.finishRestart()
                     } else if self.running {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                             self.startTask()
@@ -145,6 +149,8 @@ class SpeechEngine {
             } else if error != nil {
                 if self.stopping {
                     self.finishStop()
+                } else if self.restarting {
+                    self.finishRestart()
                 } else if self.running {
                     // Only restart on genuine errors, not cancellation
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -176,11 +182,8 @@ class SpeechEngine {
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + kRestartInterval)
         timer.setEventHandler { [weak self] in
-            guard let self = self, self.running else { return }
-            if !self.lastPartialText.isEmpty {
-                self.emitFinal(self.lastPartialText, result: nil)
-            }
-            self.startTask()
+            guard let self = self, self.running, !self.stopping, !self.restarting else { return }
+            self.beginRestart()
         }
         timer.resume()
         restartTimer = timer
@@ -207,9 +210,46 @@ class SpeechEngine {
         stopFallbackTimer = timer
     }
 
+    private func beginRestart() {
+        restarting = true
+        cancelRestartTimer()
+        request?.endAudio()
+        task?.finish()
+        scheduleRestartFallback()
+    }
+
+    private func scheduleRestartFallback() {
+        restartFallbackTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 0.8)
+        timer.setEventHandler { [weak self] in
+            guard let self = self, self.restarting else { return }
+            if !self.lastPartialText.isEmpty {
+                self.emitFinal(self.lastPartialText, result: nil)
+                self.lastPartialText = ""
+            }
+            self.finishRestart()
+        }
+        timer.resume()
+        restartFallbackTimer = timer
+    }
+
+    private func finishRestart() {
+        restartFallbackTimer?.cancel()
+        restartFallbackTimer = nil
+        restarting = false
+        guard running else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            self.startTask()
+        }
+    }
+
     private func finishStop() {
         stopFallbackTimer?.cancel()
         stopFallbackTimer = nil
+        restartFallbackTimer?.cancel()
+        restartFallbackTimer = nil
+        restarting = false
         stopping = false
         task = nil
         request = nil
