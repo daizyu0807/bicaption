@@ -2169,6 +2169,10 @@ class AppleSttTranscriber:
             event_type = event.get("type", "")
             if event_type == "final":
                 final_text = normalize_text(event.get("text", ""))
+                trace_debug(
+                    f"apple_stt_raw_final session={_emit_context['sessionId']} "
+                    f"words={count_words(final_text)} text={final_text[:120]!r}"
+                )
                 if is_dictation_mode and final_text and len(final_text.replace(" ", "")) >= 2:
                     if not self._is_duplicate(final_text):
                         self._segment_counter += 1
@@ -2222,6 +2226,10 @@ class AppleSttTranscriber:
                 latest_partial_text = ""
             elif event_type == "partial":
                 latest_partial_text = normalize_text(event.get("text", ""))
+                trace_debug(
+                    f"apple_stt_raw_partial session={_emit_context['sessionId']} "
+                    f"words={count_words(latest_partial_text)} text={latest_partial_text[:120]!r}"
+                )
             elif event_type == "error":
                 emit({
                     "type": "error",
